@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Papelera - {{ app_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Papelera</h1>
+    <div class="actions">
+        <form method="POST" action="{{ url_for('admin.qr_trash_empty') }}" style="display:inline;">
+            <button type="submit" class="btn btn-danger" data-confirm="Vaciar papelera permanentemente?">Vaciar papelera</button>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="table-container">
+        <table>
+            <thead><tr><th>Slug</th><th>Titulo</th><th>Tipo</th><th>Eliminado</th><th>Acciones</th></tr></thead>
+            <tbody>
+                {% for qr in qrs %}
+                <tr>
+                    <td>{{ qr.slug }}</td>
+                    <td>{{ qr.title }}</td>
+                    <td><span class="badge badge-info">{{ qr.qr_type }}</span></td>
+                    <td>{{ qr.deleted_at.strftime('%d/%m/%Y %H:%M') if qr.deleted_at else '-' }}</td>
+                    <td class="actions">
+                        <form method="POST" action="{{ url_for('admin.qr_restore', qr_id=qr.id) }}" style="display:inline;">
+                            <button type="submit" class="btn btn-sm btn-success">Restaurar</button>
+                        </form>
+                        <form method="POST" action="{{ url_for('admin.qr_destroy', qr_id=qr.id) }}" style="display:inline;">
+                            <button type="submit" class="btn btn-sm btn-danger" data-confirm="Eliminar permanentemente?">Destruir</button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5"><div class="empty-state"><h3>Papelera vacia</h3><p>No hay QR eliminados.</p></div></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if pagination and pagination.pages > 1 %}
+    <div class="card-footer">
+        <div class="pagination">
+            {% if pagination.has_prev %}<a href="{{ url_for('admin.qr_trash', page=pagination.prev_num) }}">&laquo;</a>{% endif %}
+            {% for p in pagination.iter_pages() %}
+                {% if p %}<a href="{{ url_for('admin.qr_trash', page=p) }}" class="{% if p == pagination.page %}current{% endif %}">{{ p }}</a>{% else %}<span>...</span>{% endif %}
+            {% endfor %}
+            {% if pagination.has_next %}<a href="{{ url_for('admin.qr_trash', page=pagination.next_num) }}">&raquo;</a>{% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

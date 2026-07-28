@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Tags - {{ app_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Tags</h1>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('admin.tag_create') }}" class="flex gap-1 flex-wrap items-center">
+            <input class="form-control" name="name" placeholder="Nombre del tag" required style="max-width:200px;">
+            <input class="form-control" name="color" type="color" value="#2c6b9e" style="max-width:60px;padding:2px;">
+            <button type="submit" class="btn btn-primary">Crear Tag</button>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="table-container">
+        <table>
+            <thead><tr><th>Color</th><th>Nombre</th><th>Creado por</th><th>Acciones</th></tr></thead>
+            <tbody>
+                {% for tag in tags %}
+                <tr>
+                    <td><span style="display:inline-block;width:24px;height:24px;border-radius:4px;background:{{ tag.color }};"></span></td>
+                    <td><span class="tag-pill" style="background:{{ tag.color }};">{{ tag.name }}</span></td>
+                    <td>{{ tag.creator.username if tag.creator else '-' }}</td>
+                    <td class="actions">
+                        <form method="POST" action="{{ url_for('admin.tag_edit', tag_id=tag.id) }}" class="flex gap-1 flex-wrap" style="display:inline-flex;">
+                            <input class="form-control" name="name" value="{{ tag.name }}" required style="max-width:150px;">
+                            <input class="form-control" name="color" type="color" value="{{ tag.color }}" style="max-width:50px;padding:2px;">
+                            <button type="submit" class="btn btn-sm btn-outline">Guardar</button>
+                        </form>
+                        <form method="POST" action="{{ url_for('admin.tag_delete', tag_id=tag.id) }}" style="display:inline;">
+                            <button type="submit" class="btn btn-sm btn-danger" data-confirm="Eliminar tag?">Eliminar</button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4"><div class="empty-state"><h3>Sin tags</h3><p>Crea tags para agrupar tus QR por proyecto o campana.</p></div></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

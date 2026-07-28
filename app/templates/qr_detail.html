@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}{{ qr.title }} - {{ app_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>{{ qr.title }}</h1>
+    <div class="actions">
+        {% if qr.is_active and not qr.is_expired %}
+            <span class="badge badge-success" style="font-size:0.9rem;padding:0.4rem 1rem;">Activo</span>
+        {% elif qr.is_expired %}
+            <span class="badge badge-warning" style="font-size:0.9rem;padding:0.4rem 1rem;">Expirado</span>
+        {% else %}
+            <span class="badge badge-secondary" style="font-size:0.9rem;padding:0.4rem 1rem;">Inactivo</span>
+        {% endif %}
+        <a href="{{ url_for('admin.qr_edit', qr_id=qr.id) }}" class="btn btn-primary">Editar</a>
+        <form method="POST" action="{{ url_for('admin.qr_toggle', qr_id=qr.id) }}" style="display:inline;">
+            <button type="submit" class="btn btn-outline">{{ 'Desactivar' if qr.is_active else 'Activar' }}</button>
+        </form>
+        <form method="POST" action="{{ url_for('admin.qr_delete', qr_id=qr.id) }}" style="display:inline;">
+            <button type="submit" class="btn btn-danger" data-confirm="Enviar a la papelera?">Eliminar</button>
+        </form>
+    </div>
+</div>
+
+<div class="row flex gap-2" style="flex-wrap:wrap;">
+    <div style="flex:1;min-width:300px;">
+        <div class="card">
+            <div class="card-header">Informacion del QR</div>
+            <div class="card-body">
+                <div class="qr-info-grid">
+                    <div class="qr-info-item"><label>Slug</label><span><a href="{{ qr.full_url }}" target="_blank">{{ qr.slug }}</a></span></div>
+                    <div class="qr-info-item"><label>Tipo</label><span class="badge badge-info">{{ qr.qr_type }}</span></div>
+                    <div class="qr-info-item"><label>URL corta</label><span><a href="{{ qr.full_url }}" target="_blank">{{ qr.full_url }}</a></span></div>
+                    <div class="qr-info-item"><label>Dominio</label><span>{{ qr.domain.domain if qr.domain else 'Default' }}</span></div>
+                    <div class="qr-info-item"><label>Creado</label><span>{{ qr.created_at.strftime('%d/%m/%Y %H:%M') if qr.created_at else '-' }}</span></div>
+                    <div class="qr-info-item"><label>Actualizado</label><span>{{ qr.updated_at.strftime('%d/%m/%Y %H:%M') if qr.updated_at else '-' }}</span></div>
+                    <div class="qr-info-item"><label>Escaneos</label><span>{{ qr.scan_count or 0 }}</span></div>
+                    <div class="qr-info-item"><label>Max escaneos</label><span>{{ qr.max_scans if qr.max_scans else 'Ilimitado' }}</span></div>
+                    <div class="qr-info-item"><label>Expira</label><span>{{ qr.expires_at.strftime('%d/%m/%Y %H:%M') if qr.expires_at else 'Nunca' }}</span></div>
+                    <div class="qr-info-item"><label>Tags</label><span>{% for t in qr.tags %}<span class="tag-pill" style="background:{{ t.color }};">{{ t.name }}</span> {% else %}-{% endfor %}</span></div>
+                </div>
+                {% if qr.description %}
+                <div class="mt-2"><label style="font-size:0.8rem;color:var(--gray-500);display:block;">Descripcion</label><p>{{ qr.description }}</p></div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">Redireccion condicional</div>
+            <div class="card-body">
+                <a href="{{ url_for('admin.conditional_redirects', qr_id=qr.id) }}" class="btn btn-outline btn-sm">Gestionar redirecciones</a>
+                {% set cr_count = qr.conditional_redirects.count() %}
+                {% if cr_count > 0 %}
+                    <span class="text-muted" style="font-size:0.85rem;margin-left:0.5rem;">{{ cr_count }} regla(s)</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div style="flex:1;min-width:280px;">
+        <div class="card">
+            <div class="card-header">Codigo QR</div>
+            <div class="card-body qr-preview">
+                <img src="{{ url_for('qr.download_qr', slug=qr.slug) }}?size=300&amp;outer_shape={{ qr.qr_outer_shape }}&amp;style={{ qr.qr_style }}&amp;fg={{ qr.qr_fg_color | urlencode }}&amp;bg={{ qr.qr_bg_color | urlencode }}" alt="QR {{ qr.slug }}" style="max-width:100%;">
+                <div class="flex gap-1 mt-2" style="justify-content:center;">
+                    <a href="{{ url_for('qr.download_qr', slug=qr.slug) }}?format=png&amp;outer_shape={{ qr.qr_outer_shape }}&amp;style={{ qr.qr_style }}&amp;fg={{ qr.qr_fg_color | urlencode }}&amp;bg={{ qr.qr_bg_color | urlencode }}" class="btn btn-sm btn-primary" download>PNG</a>
+                    <a href="{{ url_for('qr.download_qr', slug=qr.slug) }}?format=svg&amp;outer_shape={{ qr.qr_outer_shape }}&amp;style={{ qr.qr_style }}&amp;fg={{ qr.qr_fg_color | urlencode }}&amp;bg={{ qr.qr_bg_color | urlencode }}" class="btn btn-sm btn-outline" download>SVG</a>
+                </div>
+                <div style="font-size:0.75rem;color:var(--gray-500);margin-top:0.5rem;">
+                    Forma: {{ qr.qr_outer_shape }} | Estilo: {{ qr.qr_style }} | Frente: {{ qr.qr_fg_color }} | Fondo: {{ qr.qr_bg_color }}
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">Escaneos por dispositivo</div>
+            <div class="card-body">
+                {% if scans_by_device %}
+                {% set total_dev = scans_by_device | sum(attribute='1') %}
+                {% for device, count in scans_by_device %}
+                <div style="display:flex;justify-content:space-between;padding:0.25rem 0;font-size:0.9rem;">
+                    <span>{{ device or 'desconocido' }}</span>
+                    <span><strong>{{ count }}</strong> ({{ (count / total_dev * 100)|round(1) }}%)</span>
+                </div>
+                {% endfor %}
+                {% else %}
+                <p class="text-muted">Sin datos.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mt-2">
+    <div class="card-header">
+        <span>Historial de escaneos</span>
+        {% if scans_by_day %}
+        <canvas class="chart-canvas" width="600" height="100"
+                data-labels='[{% for s in scans_by_day %}"{{ s.day.isoformat() if s.day else '' }}"{% if not loop.last %},{% endif %}{% endfor %}]'
+                data-values='[{% for s in scans_by_day %}{{ s.count }}{% if not loop.last %},{% endif %}{% endfor %}]'>
+        </canvas>
+        {% endif %}
+    </div>
+    <div class="table-container">
+        <table>
+            <thead><tr><th>Fecha</th><th>IP</th><th>Dispositivo</th><th>Navegador</th><th>SO</th><th>Pais</th><th>Ciudad</th><th>Proxy</th></tr></thead>
+            <tbody>
+                {% for s in scans.items %}
+                <tr>
+                    <td>{{ s.scanned_at.strftime('%d/%m/%Y %H:%M') if s.scanned_at else '-' }}</td>
+                    <td>{{ s.ip_address or '-' }}</td>
+                    <td>{{ s.device_type or '-' }}</td>
+                    <td>{{ s.browser or '-' }}</td>
+                    <td>{{ s.os_name or '-' }}</td>
+                    <td>{{ s.country or '-' }}</td>
+                    <td>{{ s.city or '-' }}</td>
+                    <td>{% if s.is_proxy %}<span class="badge badge-warning">{{ s.proxy_type }}</span>{% else %}-{% endif %}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="8"><div class="empty-state"><h3>Sin escaneos</h3><p>Este QR aun no ha sido escaneado.</p></div></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if scans and scans.pages > 1 %}
+    <div class="card-footer">
+        <div class="pagination">
+            {% if scans.has_prev %}<a href="{{ url_for('admin.qr_detail', qr_id=qr.id, page=scans.prev_num) }}">&laquo;</a>{% endif %}
+            {% for p in scans.iter_pages() %}
+                {% if p %}<a href="{{ url_for('admin.qr_detail', qr_id=qr.id, page=p) }}" class="{% if p == scans.page %}current{% endif %}">{{ p }}</a>{% else %}<span>...</span>{% endif %}
+            {% endfor %}
+            {% if scans.has_next %}<a href="{{ url_for('admin.qr_detail', qr_id=qr.id, page=scans.next_num) }}">&raquo;</a>{% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

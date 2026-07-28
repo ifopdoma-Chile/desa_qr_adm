@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}API Keys - {{ app_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>API Keys</h1>
+</div>
+
+{% if session.new_api_key %}
+<div class="card" style="border-color: var(--success); border-width: 2px;" id="new-key-card">
+    <div class="card-header" style="background: #d4edda; color: #155724;">
+        <span>Nueva API Key generada: <strong>{{ session.new_api_key_name }}</strong></span>
+        <button class="btn-close" onclick="document.getElementById('new-key-card').remove()" style="background:none;border:none;font-size:1.25rem;cursor:pointer;">&times;</button>
+    </div>
+    <div class="card-body">
+        <p style="color: var(--danger); font-weight: 600; margin-bottom: 0.75rem;">
+            Esta es la unica vez que se muestra la key. Copiala ahora.
+        </p>
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <code id="new-api-key" style="flex:1; padding: 0.75rem; background: var(--gray-100); border: 1px solid var(--gray-300); border-radius: var(--radius); font-size: 0.95rem; word-break: break-all;">{{ session.new_api_key }}</code>
+            <button class="btn btn-success" onclick="copyKey()">Copiar</button>
+            <form method="POST" action="{{ url_for('admin.api_key_clear_session') }}" style="display:inline;">
+                <button type="submit" class="btn btn-outline">Cerrar</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="card">
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('admin.api_key_create') }}" class="flex gap-1 flex-wrap items-center">
+            <input class="form-control" name="name" placeholder="Nombre de la key" required style="max-width:300px;">
+            <button type="submit" class="btn btn-primary">Generar Nueva API Key</button>
+        </form>
+        <div class="form-help mt-1">Usa la API Key en el header <code>Authorization: Bearer &lt;key&gt;</code> para acceder a la <a href="{{ url_for('admin.qr_list') }}">API REST</a>.</div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="table-container">
+        <table>
+            <thead><tr><th>Nombre</th><th>Key (prefix)</th><th>Ultimo uso</th><th>Creada</th><th>Acciones</th></tr></thead>
+            <tbody>
+                {% for key in keys %}
+                <tr>
+                    <td>{{ key.name }}</td>
+                    <td><code>{{ key.key_prefix }}...</code></td>
+                    <td>{{ key.last_used.strftime('%d/%m/%Y %H:%M') if key.last_used else 'Nunca' }}</td>
+                    <td>{{ key.created_at.strftime('%d/%m/%Y %H:%M') if key.created_at else '-' }}</td>
+                    <td class="actions">
+                        <form method="POST" action="{{ url_for('admin.api_key_delete', key_id=key.id) }}" style="display:inline;">
+                            <button type="submit" class="btn btn-sm btn-danger" data-confirm="Eliminar API Key?">Eliminar</button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5"><div class="empty-state"><h3>Sin API Keys</h3><p>Genera una API Key para integrar con otros sistemas.</p></div></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+function copyKey() {
+    var keyEl = document.getElementById('new-api-key');
+    var text = keyEl.textContent;
+    navigator.clipboard.writeText(text).then(function() {
+        var btn = document.querySelector('#new-key-card .btn-success');
+        var orig = btn.textContent;
+        btn.textContent = 'Copiado!';
+        btn.style.background = '#155724';
+        setTimeout(function() {
+            btn.textContent = orig;
+            btn.style.background = '';
+        }, 2000);
+    }).catch(function() {
+        var range = document.createRange();
+        range.selectNode(keyEl);
+        window.getSelection().removeAllRanges();
+        window.getSelection().addRange(range);
+        document.execCommand('copy');
+        window.getSelection().removeAllRanges();
+    });
+}
+</script>
+{% endblock %}

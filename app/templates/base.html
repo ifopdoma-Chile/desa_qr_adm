@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}{{ app_name }}{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+{% if current_user.is_authenticated %}
+    <header class="navbar">
+        <div style="display:flex;align-items:center;gap:0.5rem;">
+            <button class="navbar-toggle" id="sidebarToggle" aria-label="Menu">&#9776;</button>
+            <a href="{{ url_for('admin.dashboard') }}" class="navbar-brand">{{ app_name }}</a>
+        </div>
+        <div class="navbar-user">
+            <span>{{ current_user.full_name or current_user.username }}</span>
+            <span class="role-badge">{{ dict(current_user.ROLES).get(current_user.role, current_user.role) }}</span>
+            <a href="{{ url_for('auth.logout') }}" class="btn btn-sm" style="color:#fff;border-color:rgba(255,255,255,0.3);">Salir</a>
+        </div>
+    </header>
+
+    <aside class="sidebar" id="sidebar">
+        <nav>
+            <div class="section-title">General</div>
+            <a href="{{ url_for('admin.dashboard') }}" class="{% if request.endpoint == 'admin.dashboard' %}active{% endif %}">
+                &#9679; Dashboard
+            </a>
+            <a href="{{ url_for('admin.qr_list') }}" class="{% if request.endpoint and request.endpoint.startswith('admin.qr_') and request.endpoint != 'admin.qr_trash' %}active{% endif %}">
+                &#9679; Mis QR
+            </a>
+            <a href="{{ url_for('admin.qr_trash') }}" class="{% if request.endpoint == 'admin.qr_trash' %}active{% endif %}">
+                &#9679; Papelera
+            </a>
+            <a href="{{ url_for('admin.tag_list') }}" class="{% if request.endpoint == 'admin.tag_list' %}active{% endif %}">
+                &#9679; Tags
+            </a>
+
+            <div class="section-title">Configuracion</div>
+            <a href="{{ url_for('admin.import_export') }}" class="{% if request.endpoint == 'admin.import_export' %}active{% endif %}">
+                &#9679; Import / Export
+            </a>
+            <a href="{{ url_for('admin.api_key_list') }}" class="{% if request.endpoint == 'admin.api_key_list' %}active{% endif %}">
+                &#9679; API Keys
+            </a>
+            {% if current_user.is_admin %}
+                <div class="section-title">Administracion</div>
+                <a href="{{ url_for('admin.user_list') }}" class="{% if request.endpoint == 'admin.user_list' or request.endpoint == 'admin.user_create' or request.endpoint == 'admin.user_edit' %}active{% endif %}">
+                    &#9679; Usuarios
+                </a>
+                <a href="{{ url_for('admin.domain_list') }}" class="{% if request.endpoint == 'admin.domain_list' %}active{% endif %}">
+                    &#9679; Dominios
+                </a>
+            {% endif %}
+        </nav>
+    </aside>
+{% endif %}
+
+<main class="main">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">
+                    {{ message }}
+                    <button class="alert-close">&times;</button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+</main>
+
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>

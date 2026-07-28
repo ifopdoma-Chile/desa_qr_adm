@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Redirecciones Condicionales - {{ app_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Redirecciones: {{ qr.title }}</h1>
+    <div class="actions">
+        <a href="{{ url_for('admin.qr_detail', qr_id=qr.id) }}" class="btn btn-outline">Volver al QR</a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">Nueva regla</div>
+    <div class="card-body">
+        <form method="POST" class="form-row" style="align-items:end;">
+            <div class="form-group">
+                <label>Dispositivo</label>
+                <select class="form-control" name="device_type">
+                    <option value="">Cualquier dispositivo</option>
+                    <option value="mobile">Mobile</option>
+                    <option value="desktop">Desktop</option>
+                    <option value="tablet">Tablet</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Patron User-Agent (regex)</label>
+                <input class="form-control" name="user_agent_pattern" placeholder="ej: iPhone|Android">
+            </div>
+            <div class="form-group">
+                <label>URL destino *</label>
+                <input class="form-control" name="target_url" required placeholder="https://...">
+            </div>
+            <div class="form-group">
+                <label>Prioridad</label>
+                <input class="form-control" name="priority" type="number" value="0">
+            </div>
+            <div class="form-group">
+                <button type="submit" class="btn btn-primary">Agregar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="table-container">
+        <table>
+            <thead><tr><th>Dispositivo</th><th>Patron UA</th><th>URL destino</th><th>Prioridad</th><th>Activo</th><th>Acciones</th></tr></thead>
+            <tbody>
+                {% for cr in redirects %}
+                <tr>
+                    <td>{{ cr.device_type or 'Cualquiera' }}</td>
+                    <td><code>{{ cr.user_agent_pattern or '-' }}</code></td>
+                    <td class="truncate" style="max-width:250px;"><a href="{{ cr.target_url }}" target="_blank">{{ cr.target_url }}</a></td>
+                    <td>{{ cr.priority }}</td>
+                    <td>{% if cr.is_active %}<span class="badge badge-success">Si</span>{% else %}<span class="badge badge-secondary">No</span>{% endif %}</td>
+                    <td class="actions">
+                        <form method="POST" action="{{ url_for('admin.conditional_redirect_delete', cr_id=cr.id) }}" style="display:inline;">
+                            <button type="submit" class="btn btn-sm btn-danger" data-confirm="Eliminar redireccion?">Eliminar</button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6"><div class="empty-state"><h3>Sin reglas</h3><p>Agrega redirecciones condicionales para enviar a distintos destinos segun el dispositivo.</p></div></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
