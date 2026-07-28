@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR Inactivo - {{ app_name }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#f8f9fa;">
+    <div style="text-align:center;padding:2rem;max-width:500px;">
+        <div style="font-size:4rem;margin-bottom:1rem;">&#128274;</div>
+        <h1 style="margin-bottom:0.5rem;">QR Inactivo</h1>
+        <p style="color:#6c757d;margin-bottom:1rem;">
+            {% if qr %}
+                Este codigo QR (<strong>/{{ qr.slug }}</strong>) ya no se encuentra activo o ha expirado.
+            {% else %}
+                Este codigo QR ya no se encuentra activo.
+            {% endif %}
+        </p>
+        <p style="font-size:0.85rem;color:#6c757d;">{{ app_name }}</p>
+    </div>
+</body>
+</html>

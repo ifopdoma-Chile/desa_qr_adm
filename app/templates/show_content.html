@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contenido - {{ app_name }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#f8f9fa;">
+    <div style="text-align:center;padding:2rem;max-width:600px;width:100%;">
+        <h1 style="margin-bottom:0.5rem;">{{ qr.title }}</h1>
+        {% if qr.description %}<p style="color:#6c757d;margin-bottom:1.5rem;">{{ qr.description }}</p>{% endif %}
+        <div style="background:#fff;border-radius:8px;padding:1.5rem;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+            <pre style="white-space:pre-wrap;word-break:break-word;text-align:left;font-size:0.95rem;">{{ data }}</pre>
+        </div>
+        <p style="margin-top:1.5rem;font-size:0.85rem;color:#6c757d;">Escaneado desde QR {{ qr.slug }}</p>
+    </div>
+</body>
+</html>

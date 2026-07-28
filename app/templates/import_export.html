@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Import / Export - {{ app_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Import / Export</h1>
+</div>
+
+<div class="row flex gap-2" style="flex-wrap:wrap;">
+    <div style="flex:1;min-width:300px;">
+        <div class="card">
+            <div class="card-header">Importar QR desde CSV</div>
+            <div class="card-body">
+                <form method="POST" enctype="multipart/form-data">
+                    <div class="form-group">
+                        <label>Archivo CSV</label>
+                        <input class="form-control" type="file" name="csv_file" accept=".csv" required>
+                    </div>
+                    <div class="form-help mb-2">
+                        El CSV debe incluir las columnas: <code>title, qr_type, slug, content_url, content_text, description, is_active</code>.
+                        El slug se auto-genera si se deja vacio.
+                    </div>
+                    <button type="submit" class="btn btn-primary">Importar</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div style="flex:1;min-width:300px;">
+        <div class="card">
+            <div class="card-header">Exportar QR</div>
+            <div class="card-body">
+                <p class="mb-2">Descarga todos tus QR en formato CSV.</p>
+                <a href="{{ url_for('admin.export_csv') }}" class="btn btn-success">Descargar CSV</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

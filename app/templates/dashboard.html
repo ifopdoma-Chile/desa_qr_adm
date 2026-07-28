@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - {{ app_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Dashboard</h1>
+    <div class="actions">
+        <a href="{{ url_for('admin.qr_create') }}" class="btn btn-primary">+ Nuevo QR</a>
+    </div>
+</div>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-value">{{ total_qrs }}</div>
+        <div class="stat-label">Total QR</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ active_qrs }}</div>
+        <div class="stat-label">Activos</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ total_scans }}</div>
+        <div class="stat-label">Escaneos totales</div>
+    </div>
+</div>
+
+<div class="row flex gap-2" style="flex-wrap:wrap;">
+    <div style="flex:2;min-width:300px;">
+        <div class="card">
+            <div class="card-header">Escaneos (ultimos 30 dias)</div>
+            <div class="card-body">
+                {% if scans_by_day %}
+                    <canvas class="chart-canvas" width="600" height="200"
+                            data-labels='[{% for s in scans_by_day %}"{{ s.day.isoformat() if s.day else '' }}"{% if not loop.last %},{% endif %}{% endfor %}]'
+                            data-values='[{% for s in scans_by_day %}{{ s.count }}{% if not loop.last %},{% endif %}{% endfor %}]'>
+                    </canvas>
+                {% else %}
+                    <p class="text-muted">No hay escaneos aun.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">QR mas escaneados</div>
+            <div class="card-body">
+                {% if top_qrs %}
+                <div class="table-container">
+                    <table>
+                        <thead><tr><th>Slug</th><th>Titulo</th><th>Tipo</th><th>Escaneos</th></tr></thead>
+                        <tbody>
+                        {% for qr in top_qrs %}
+                            <tr>
+                                <td><a href="{{ url_for('admin.qr_detail', qr_id=qr.id) }}">{{ qr.slug }}</a></td>
+                                <td class="truncate" style="max-width:200px;">{{ qr.title }}</td>
+                                <td><span class="badge badge-info">{{ qr.qr_type }}</span></td>
+                                <td>{{ qr.scan_count or 0 }}</td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                    <p class="text-muted">Aun no hay datos.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div style="flex:1;min-width:280px;">
+        <div class="card">
+            <div class="card-header">QR recientes</div>
+            <div class="card-body">
+                {% if recent_qrs %}
+                <div style="display:flex;flex-direction:column;gap:0.75rem;">
+                    {% for qr in recent_qrs %}
+                    <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--gray-200);padding-bottom:0.5rem;">
+                        <div>
+                            <a href="{{ url_for('admin.qr_detail', qr_id=qr.id) }}" style="font-weight:500;">{{ qr.title }}</a>
+                            <div style="font-size:0.8rem;color:var(--gray-500);">
+                                /{{ qr.slug }} &middot; {{ qr.scan_count or 0 }} escaneos
+                            </div>
+                        </div>
+                        <span class="badge {% if qr.is_active %}badge-success{% else %}badge-secondary{% endif %}">
+                            {{ 'Activo' if qr.is_active else 'Inactivo' }}
+                        </span>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                    <p class="text-muted">No hay QR aun. <a href="{{ url_for('admin.qr_create') }}">Crea el primero</a>.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

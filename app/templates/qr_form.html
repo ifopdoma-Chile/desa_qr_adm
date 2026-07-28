@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Editar' if qr else 'Nuevo' }} QR - {{ app_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>{{ 'Editar' if qr else 'Nuevo' }} QR</h1>
+    <div class="actions">
+        <a href="{{ url_for('admin.qr_list') }}" class="btn btn-outline">Volver</a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <form method="POST">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="title">Titulo *</label>
+                    <input class="form-control" id="title" name="title" required maxlength="200"
+                           value="{{ qr.title if qr else '' }}">
+                </div>
+                <div class="form-group">
+                    <label for="slug">Slug (dejar vacio para auto-generar)</label>
+                    <input class="form-control" id="slug" name="slug" maxlength="50"
+                           value="{{ qr.slug if qr else '' }}" placeholder="mi-qr-personalizado">
+                    <div class="form-help">El QR se accede en {{ app_base_url }}/<strong>slug</strong></div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="description">Descripcion (uso interno)</label>
+                <textarea class="form-control" id="description" name="description" rows="2">{{ qr.description if qr else '' }}</textarea>
+            </div>
+
+            <div class="form-group">
+                <label>Tipo de QR *</label>
+                <select name="qr_type" class="form-control" style="max-width:300px;">
+                    {% for val, label in qr_types %}
+                    <option value="{{ val }}" {% if qr and qr.qr_type == val %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="qr-type-tabs">
+                {% for val, label in qr_types %}
+                <div class="qr-type-tab {% if (qr and qr.qr_type == val) or (not qr and val == 'url') %}active{% endif %}"
+                     data-target="{{ val }}">{{ label }}</div>
+                {% endfor %}
+            </div>
+
+            {# URL #}
+            <div class="qr-type-fields {% if (qr and qr.qr_type == 'url') or not qr %}active{% endif %}" id="fields-url">
+                <div class="form-group">
+                    <label>URL de destino</label>
+                    <input class="form-control" name="content_url" value="{{ qr.content_url if qr else '' }}" placeholder="https://ejemplo.cl">
+                </div>
+            </div>
+
+            {# WiFi #}
+            <div class="qr-type-fields" id="fields-wifi">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>SSID (nombre red)</label>
+                        <input class="form-control" name="wifi_ssid" value="{{ qr.wifi_ssid if qr else '' }}">
+                    </div>
+                    <div class="form-group">
+                        <label>Contrasena</label>
+                        <input class="form-control" name="wifi_password" value="{{ qr.wifi_password if qr else '' }}">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Cifrado</label>
+                    <select class="form-control" name="wifi_encryption" style="max-width:200px;">
+                        <option value="WPA" {% if qr and qr.wifi_encryption == 'WPA' %}selected{% endif %}>WPA/WPA2</option>
+                        <option value="WEP" {% if qr and qr.wifi_encryption == 'WEP' %}selected{% endif %}>WEP</option>
+                        <option value="" {% if qr and qr.wifi_encryption == '' %}selected{% endif %}>Sin cifrado</option>
+                    </select>
+                </div>
+            </div>
+
+            {# vCard #}
+            <div class="qr-type-fields" id="fields-vcard">
+                <div class="form-row">
+                    <div class="form-group"><label>Apellido</label><input class="form-control" name="vcard_name" value="{{ qr.vcard_name if qr else '' }}"></div>
+                    <div class="form-group"><label>Nombre</label><input class="form-control" name="vcard_first_name" value="{{ qr.vcard_first_name if qr else '' }}"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Telefono</label><input class="form-control" name="vcard_phone" value="{{ qr.vcard_phone if qr else '' }}"></div>
+                    <div class="form-group"><label>Email</label><input class="form-control" name="vcard_email" value="{{ qr.vcard_email if qr else '' }}"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label>Organizacion</label><input class="form-control" name="vcard_org" value="{{ qr.vcard_org if qr else '' }}"></div>
+                    <div class="form-group"><label>Cargo</label><input class="form-control" name="vcard_title" value="{{ qr.vcard_title if qr else '' }}"></div>
+                </div>
+                <div class="form-group"><label>URL</label><input class="form-control" name="vcard_url" value="{{ qr.vcard_url if qr else '' }}"></div>
+            </div>
+
+            {# Map #}
+            <div class="qr-type-fields" id="fields-map">
+                <div class="form-row">
+                    <div class="form-group"><label>Latitud</label><input class="form-control" name="map_lat" type="number" step="any" value="{{ qr.map_lat if qr else '' }}"></div>
+                    <div class="form-group"><label>Longitud</label><input class="form-control" name="map_lon" type="number" step="any" value="{{ qr.map_lon if qr else '' }}"></div>
+                </div>
+                <div class="form-group"><label>Etiqueta</label><input class="form-control" name="map_label" value="{{ qr.map_label if qr else '' }}"></div>
+            </div>
+
+            {# Text #}
+            <div class="qr-type-fields" id="fields-text">
+                <div class="form-group"><label>Texto</label><textarea class="form-control" name="content_text" rows="4">{{ qr.content_text if qr else '' }}</textarea></div>
+            </div>
+
+            {# Email #}
+            <div class="qr-type-fields" id="fields-email">
+                <div class="form-group"><label>Direccion Email</label><input class="form-control" name="email_address" value="{{ qr.email_address if qr else '' }}"></div>
+                <div class="form-group"><label>Asunto</label><input class="form-control" name="email_subject" value="{{ qr.email_subject if qr else '' }}"></div>
+                <div class="form-group"><label>Cuerpo</label><textarea class="form-control" name="email_body" rows="3">{{ qr.email_body if qr else '' }}</textarea></div>
+            </div>
+
+            {# Phone #}
+            <div class="qr-type-fields" id="fields-phone">
+                <div class="form-group"><label>Numero telefonico</label><input class="form-control" name="phone_number" value="{{ qr.phone_number if qr else '' }}"></div>
+            </div>
+
+            {# SMS #}
+            <div class="qr-type-fields" id="fields-sms">
+                <div class="form-group"><label>Numero</label><input class="form-control" name="phone_number" value="{{ qr.phone_number if qr else '' }}"></div>
+                <div class="form-group"><label>Mensaje</label><textarea class="form-control" name="sms_message" rows="3">{{ qr.sms_message if qr else '' }}</textarea></div>
+            </div>
+
+            {# JSON #}
+            <div class="qr-type-fields" id="fields-json">
+                <div class="form-group"><label>JSON (texto)</label><textarea class="form-control" name="content_jsonb" rows="6">{{ (qr.content_jsonb | tojson(indent=2)) if qr and qr.content_jsonb else '{}' }}</textarea></div>
+            </div>
+
+            <hr class="mt-2 mb-2">
+
+            <h3 style="font-size:1.1rem;margin-bottom:1rem;">Opciones avanzadas</h3>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Dominio</label>
+                    <select class="form-control" name="domain_id">
+                        <option value="">Default</option>
+                        {% for d in domains %}
+                        <option value="{{ d.id }}" {% if qr and qr.domain_id == d.id %}selected{% endif %}>{{ d.domain }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Tags</label>
+                    <select class="form-control" name="tags" multiple style="min-height:80px;">
+                        {% for tag in tags %}
+                        <option value="{{ tag.id }}" {% if qr and tag in qr.tags %}selected{% endif %}>{{ tag.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Fecha de expiracion</label>
+                    <input class="form-control" name="expires_at" type="datetime-local"
+                           value="{{ qr.expires_at.strftime('%Y-%m-%dT%H:%M') if qr and qr.expires_at else '' }}">
+                </div>
+                <div class="form-group">
+                    <label>Maximo de escaneos (dejar vacio = ilimitado)</label>
+                    <input class="form-control" name="max_scans" type="number" min="1"
+                           value="{{ qr.max_scans if qr and qr.max_scans else '' }}">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>URL de redireccion para QR inactivo/expirado</label>
+                <input class="form-control" name="inactive_redirect_url" value="{{ qr.inactive_redirect_url if qr else '' }}" placeholder="https://...">
+            </div>
+
+            <div class="form-check mb-2">
+                <input type="checkbox" name="is_active" id="is_active" {% if not qr or qr.is_active %}checked{% endif %}>
+                <label for="is_active">Activo</label>
+            </div>
+
+            <hr class="mt-2 mb-2">
+
+            <h3 style="font-size:1.1rem;margin-bottom:1rem;">Estilo del QR</h3>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="qr_outer_shape">Forma exterior</label>
+                    <select class="form-control" name="qr_outer_shape" id="qr_outer_shape" style="max-width:250px;">
+                        {% for val, label in qr_outer_shapes %}
+                        <option value="{{ val }}" {% if qr and qr.qr_outer_shape == val %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="qr_style">Estilo de modulos</label>
+                    <select class="form-control" name="qr_style" id="qr_style" style="max-width:250px;">
+                        {% for val, label in qr_styles %}
+                        <option value="{{ val }}" {% if qr and qr.qr_style == val %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Color de frente</label>
+                    <input class="form-control" name="qr_fg_color" type="color"
+                           value="{{ qr.qr_fg_color if qr else '#000000' }}" style="max-width:100px;height:38px;padding:3px;">
+                </div>
+                <div class="form-group">
+                    <label>Color de fondo</label>
+                    <input class="form-control" name="qr_bg_color" type="color"
+                           value="{{ qr.qr_bg_color if qr else '#ffffff' }}" style="max-width:100px;height:38px;padding:3px;">
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary">{{ 'Guardar Cambios' if qr else 'Crear QR' }}</button>
+            <a href="{{ url_for('admin.qr_list') }}" class="btn btn-outline">Cancelar</a>
+        </form>
+    </div>
+</div>
+{% endblock %}

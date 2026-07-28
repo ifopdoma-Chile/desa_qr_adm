@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Editar' if user else 'Nuevo' }} Usuario - {{ app_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>{{ 'Editar' if user else 'Nuevo' }} Usuario</h1>
+    <div class="actions">
+        <a href="{{ url_for('admin.user_list') }}" class="btn btn-outline">Volver</a>
+    </div>
+</div>
+
+<div class="card" style="max-width:600px;">
+    <div class="card-body">
+        <form method="POST">
+            <div class="form-group">
+                <label>Nombre de usuario *</label>
+                <input class="form-control" name="username" required value="{{ user.username if user else '' }}">
+            </div>
+            <div class="form-group">
+                <label>Nombre completo</label>
+                <input class="form-control" name="full_name" value="{{ user.full_name if user else '' }}">
+            </div>
+            <div class="form-group">
+                <label>Email *</label>
+                <input class="form-control" name="email" type="email" required value="{{ user.email if user else '' }}">
+            </div>
+            <div class="form-group">
+                <label>Rol</label>
+                <select class="form-control" name="role">
+                    {% set roles = [('admin', 'Administrador'), ('editor', 'Editor'), ('viewer', 'Solo lectura')] %}
+                    {% for val, label in roles %}
+                    <option value="{{ val }}" {% if user and user.role == val %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Contrasena {% if user %}(dejar vacio para mantener){% endif %}*</label>
+                <input class="form-control" name="password" type="password" {% if not user %}required{% endif %}>
+            </div>
+            {% if user %}
+            <div class="form-check mb-2">
+                <input type="checkbox" name="is_active" id="is_active" {% if user.is_active_user %}checked{% endif %}>
+                <label for="is_active">Cuenta activa</label>
+            </div>
+            {% endif %}
+            <button type="submit" class="btn btn-primary">{{ 'Guardar' if user else 'Crear Usuario' }}</button>
+            <a href="{{ url_for('admin.user_list') }}" class="btn btn-outline">Cancelar</a>
+        </form>
+    </div>
+</div>
+{% endblock %}

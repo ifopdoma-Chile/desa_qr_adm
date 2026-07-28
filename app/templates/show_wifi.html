@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WiFi - {{ app_name }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#f8f9fa;">
+    <div style="text-align:center;padding:2rem;max-width:400px;width:100%;">
+        <div style="font-size:3rem;margin-bottom:1rem;">&#127760;</div>
+        <h1 style="margin-bottom:0.5rem;">Red WiFi</h1>
+        <div style="background:#fff;border-radius:8px;padding:1.5rem;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+            <p style="font-size:1.2rem;font-weight:600;margin-bottom:0.5rem;">{{ qr.wifi_ssid }}</p>
+            {% if qr.wifi_password %}
+            <p style="margin-bottom:0.5rem;">Contrasena: <strong>{{ qr.wifi_password }}</strong></p>
+            {% endif %}
+            <p style="font-size:0.85rem;color:#6c757d;">Cifrado: {{ qr.wifi_encryption or 'Ninguno' }}</p>
+        </div>
+        <p style="margin-top:0.5rem;font-size:0.8rem;color:#6c757d;">
+            Escanea con la camara de tu telefono para conectarte automaticamente.
+        </p>
+    </div>
+</body>
+</html>
