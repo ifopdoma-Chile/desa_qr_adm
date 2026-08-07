@@ -5,7 +5,9 @@
     <h1>Mis QR</h1>
     <div class="actions">
         <a href="{{ url_for('admin.qr_create') }}" class="btn btn-primary">+ Nuevo QR</a>
+        {% if current_user.is_admin %}
         <a href="{{ url_for('admin.import_export') }}" class="btn btn-outline">Importar CSV</a>
+        {% endif %}
     </div>
 </div>
 

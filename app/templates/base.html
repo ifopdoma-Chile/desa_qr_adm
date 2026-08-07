@@ -44,12 +44,14 @@
             </a>
 
             <div class="section-title">Configuracion</div>
+            {% if current_user.is_admin %}
             <a href="{{ url_for('admin.import_export') }}" class="{% if request.endpoint == 'admin.import_export' %}active{% endif %}">
                 &#9679; Import / Export
             </a>
             <a href="{{ url_for('admin.api_docs') }}" class="{% if request.endpoint == 'admin.api_docs' %}active{% endif %}">
                 &#9679; API Docs
             </a>
+            {% endif %}
             <a href="{{ url_for('admin.api_key_list') }}" class="{% if request.endpoint == 'admin.api_key_list' %}active{% endif %}">
                 &#9679; API Keys
             </a>

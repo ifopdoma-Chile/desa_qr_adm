@@ -626,7 +626,7 @@ def domain_toggle(domain_id):
 # ─── Import / Export ───
 
 @admin_bp.route('/import-export', methods=['GET', 'POST'])
-@editor_required
+@admin_required
 def import_export():
     if request.method == 'POST' and 'csv_file' in request.files:
         f = request.files['csv_file']
@@ -982,7 +982,7 @@ def audit_logs():
 # ─── Documentacion API (pro) ───
 
 @admin_bp.route('/api-docs')
-@editor_required
+@admin_required
 def api_docs():
     return render_template('api_docs.html')
 
