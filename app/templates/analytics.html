@@ -1,0 +1,171 @@
+{% extends 'base.html' %}
+{% block title %}Analytics - {{ app_name }}{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='vendor/leaflet.css') }}">
+<style>
+    .chart-card { background:#fff; border:1px solid #dee2e6; border-radius:8px; padding:16px; margin-bottom:16px; }
+    .chart-card h3 { margin:0 0 12px; font-size:1rem; color:#1954A2; }
+    .chart-wrap { position:relative; height:260px; }
+    #map-scans { height:420px; border-radius:8px; }
+    .stat-big { font-size:2rem; font-weight:700; color:#1954A2; }
+    .stat-label { color:#6c757d; font-size:.85rem; }
+    .pill { display:inline-block; background:#eef3fb; color:#1954A2; border-radius:20px; padding:2px 10px; margin-right:6px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
+    <h2 style="margin:0;">📊 Analytics</h2>
+    <div>
+        <a href="{{ url_for('admin.analytics', days=7) }}" class="btn btn-sm {{ 'btn-primary' if days==7 else 'btn-outline' }}">7 días</a>
+        <a href="{{ url_for('admin.analytics', days=30) }}" class="btn btn-sm {{ 'btn-primary' if days==30 else 'btn-outline' }}">30 días</a>
+        <a href="{{ url_for('admin.analytics', days=90) }}" class="btn btn-sm {{ 'btn-primary' if days==90 else 'btn-outline' }}">90 días</a>
+        <a href="{{ url_for('admin.analytics', days=365) }}" class="btn btn-sm {{ 'btn-primary' if days==365 else 'btn-outline' }}">1 año</a>
+    </div>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:16px;">
+    <div class="chart-card" style="text-align:center;">
+        <div class="stat-big">{{ total_scans }}</div>
+        <div class="stat-label">Escaneos en {{ days }} días</div>
+    </div>
+    <div class="chart-card" style="text-align:center;">
+        <div class="stat-big">{{ map_scans|length }}</div>
+        <div class="stat-label">Con geolocalización</div>
+    </div>
+    <div class="chart-card" style="text-align:center;">
+        <div class="stat-big">{{ top_qrs|length }}</div>
+        <div class="stat-label">Top QRs</div>
+    </div>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;">
+    <div class="chart-card">
+        <h3>Escaneos por día</h3>
+        <div class="chart-wrap"><canvas id="chDay"></canvas></div>
+    </div>
+    <div class="chart-card">
+        <h3>Por hora del día</h3>
+        <div class="chart-wrap"><canvas id="chHour"></canvas></div>
+    </div>
+    <div class="chart-card">
+        <h3>Por dispositivo</h3>
+        <div class="chart-wrap"><canvas id="chDevice"></canvas></div>
+    </div>
+    <div class="chart-card">
+        <h3>Por sistema operativo</h3>
+        <div class="chart-wrap"><canvas id="chOs"></canvas></div>
+    </div>
+    <div class="chart-card">
+        <h3>Por navegador</h3>
+        <div class="chart-wrap"><canvas id="chBrowser"></canvas></div>
+    </div>
+    <div class="chart-card">
+        <h3>Top QRs</h3>
+        <div style="max-height:260px;overflow:auto;">
+            {% for qr in top_qrs %}
+            <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f1f3f5;">
+                <a href="{{ url_for('admin.qr_detail', qr_id=qr.id) }}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:70%;">{{ qr.title }}</a>
+                <span class="pill">{{ qr.scan_count }} escaneos</span>
+            </div>
+            {% else %}
+            <p style="color:#6c757d;">Sin datos todavía.</p>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<div class="chart-card">
+    <h3>🌍 Mapa de escaneos (últimos 500 con ubicación)</h3>
+    <div id="map-scans"></div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/leaflet.js') }}"></script>
+<script>
+(function () {
+    Chart.defaults.color = '#495057';
+    Chart.defaults.borderColor = 'rgba(0,0,0,0.06)';
+
+    function pie(ctx, labels, values, palette) {
+        new Chart(document.getElementById(ctx), {
+            type: 'pie',
+            data: {
+                labels: labels,
+                datasets: [{ data: values, backgroundColor: palette, borderWidth: 1 }]
+            },
+            options: { plugins: { legend: { position: 'bottom', labels: { boxWidth: 12 } } } }
+        });
+    }
+    function bar(ctx, labels, values) {
+        new Chart(document.getElementById(ctx), {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{ data: values, backgroundColor: '#1954A2', borderRadius: 4 }]
+            },
+            options: {
+                plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: true } }
+            }
+        });
+    }
+
+    var PALETTE = ['#1954A2', '#2c6b9e', '#4a90d9', '#7cb3e8', '#a9c9ee', '#5b8db8', '#8fb5d6', '#c3d8ec', '#d64545', '#e8a33d'];
+
+    // Por dia
+    var dayLabels = [{% for r in by_day %}"{{ r.day.isoformat() if r.day else '' }}"{% if not loop.last %},{% endif %}{% endfor %}];
+    var dayValues = [{% for r in by_day %}{{ r.count }}{% if not loop.last %},{% endif %}{% endfor %}];
+    if (dayLabels.length) bar('chDay', dayLabels, dayValues);
+
+    // Por hora
+    bar('chHour', ['0','1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','18','19','20','21','22','23'],
+        [{{ by_hour_series|join(',') }}]);
+
+    // Dispositivo
+    pie('chDevice',
+        [{% for k, c in by_device %}"{{ k or 'desconocido' }}"{% if not loop.last %},{% endif %}{% endfor %}],
+        [{% for k, c in by_device %}{{ c }}{% if not loop.last %},{% endif %}{% endfor %}], PALETTE);
+
+    // OS
+    pie('chOs',
+        [{% for k, c in by_os %}"{{ k or 'desconocido' }}"{% if not loop.last %},{% endif %}{% endfor %}],
+        [{% for k, c in by_os %}{{ c }}{% if not loop.last %},{% endif %}{% endfor %}], PALETTE);
+
+    // Navegador
+    pie('chBrowser',
+        [{% for k, c in by_browser %}"{{ k or 'desconocido' }}"{% if not loop.last %},{% endif %}{% endfor %}],
+        [{% for k, c in by_browser %}{{ c }}{% if not loop.last %},{% endif %}{% endfor %}], PALETTE);
+
+    // Mapa
+    var scanPts = [
+        {% for s in map_scans %}
+        { lat: {{ s.latitude }}, lon: {{ s.longitude }}, t: "{{ s.scanned_at.isoformat() if s.scanned_at else '' }}",
+          loc: "{{ (s.city or '') ~ ', ' ~ (s.country or '') }}", qr: "{{ s.qr_code.title if s.qr_code else '' }}" },
+        {% endfor %}
+    ];
+    if (scanPts.length && document.getElementById('map-scans')) {
+        var map = L.map('map-scans');
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 18,
+            attribution: '&copy; OpenStreetMap'
+        }).addTo(map);
+        var bounds = [];
+        scanPts.forEach(function (p) {
+            L.circleMarker([p.lat, p.lon], {
+                radius: 7, color: '#1954A2', weight: 1,
+                fillColor: '#4a90d9', fillOpacity: 0.7
+            }).addTo(map).bindPopup(
+                '<b>' + p.qr + '</b><br>' + p.loc + '<br>' + p.t
+            );
+            bounds.push([p.lat, p.lon]);
+        });
+        if (bounds.length > 1) map.fitBounds(bounds, { padding: [20, 20] });
+        else map.setView(bounds[0], 12);
+    }
+})();
+</script>
+{% endblock %}

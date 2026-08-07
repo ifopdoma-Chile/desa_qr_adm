@@ -45,8 +45,8 @@
                 <tr>
                     <td>{{ key.name }}</td>
                     <td><code>{{ key.key_prefix }}...</code></td>
-                    <td>{{ key.last_used.strftime('%d/%m/%Y %H:%M') if key.last_used else 'Nunca' }}</td>
-                    <td>{{ key.created_at.strftime('%d/%m/%Y %H:%M') if key.created_at else '-' }}</td>
+                    <td>{{ key.last_used|localtime if key.last_used else 'Nunca' }}</td>
+                    <td>{{ key.created_at|localtime if key.created_at else '-' }}</td>
                     <td class="actions">
                         <form method="POST" action="{{ url_for('admin.api_key_delete', key_id=key.id) }}" style="display:inline;">
                             <button type="submit" class="btn btn-sm btn-danger" data-confirm="Eliminar API Key?">Eliminar</button>

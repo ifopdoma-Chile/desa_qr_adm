@@ -29,6 +29,9 @@
             <a href="{{ url_for('admin.dashboard') }}" class="{% if request.endpoint == 'admin.dashboard' %}active{% endif %}">
                 &#9679; Dashboard
             </a>
+            <a href="{{ url_for('admin.analytics') }}" class="{% if request.endpoint == 'admin.analytics' %}active{% endif %}">
+                &#9679; Analytics
+            </a>
             <a href="{{ url_for('admin.qr_list') }}" class="{% if request.endpoint and request.endpoint.startswith('admin.qr_') and request.endpoint != 'admin.qr_trash' %}active{% endif %}">
                 &#9679; Mis QR
             </a>
@@ -43,6 +46,9 @@
             <a href="{{ url_for('admin.import_export') }}" class="{% if request.endpoint == 'admin.import_export' %}active{% endif %}">
                 &#9679; Import / Export
             </a>
+            <a href="{{ url_for('admin.api_docs') }}" class="{% if request.endpoint == 'admin.api_docs' %}active{% endif %}">
+                &#9679; API Docs
+            </a>
             <a href="{{ url_for('admin.api_key_list') }}" class="{% if request.endpoint == 'admin.api_key_list' %}active{% endif %}">
                 &#9679; API Keys
             </a>
@@ -56,6 +62,9 @@
                 <a href="{{ url_for('admin.user_list') }}" class="{% if request.endpoint == 'admin.user_list' or request.endpoint == 'admin.user_create' or request.endpoint == 'admin.user_edit' %}active{% endif %}">
                     &#9679; Usuarios
                     {% if pending_users_count > 0 %}<span class="badge badge-danger" style="float:right;">{{ pending_users_count }}</span>{% endif %}
+                </a>
+                <a href="{{ url_for('admin.audit_logs') }}" class="{% if request.endpoint == 'admin.audit_logs' %}active{% endif %}">
+                    &#9679; Auditoría
                 </a>
             {% endif %}
         </nav>
@@ -75,8 +84,14 @@
     {% endwith %}
 
     {% block content %}{% endblock %}
+
+    <footer style="margin-top:40px;padding:16px 0;color:#6c757d;font-size:.8rem;border-top:1px solid #dee2e6;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+        <span>{{ app_name }} · v{{ app_version }}</span>
+        <span>IFOP · Instituto de Fomento Pesquero</span>
+    </footer>
 </main>
 
 <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+{% block scripts %}{% endblock %}
 </body>
 </html>

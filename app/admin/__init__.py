@@ -1,22 +1,29 @@
 import csv
 import io
 import os
+import re
 import secrets
 from datetime import datetime, timezone
 from flask import (
     Blueprint, render_template, redirect, url_for, flash, request,
-    current_app, jsonify, Response, send_file, session
+    current_app, jsonify, Response, send_file, session, abort
 )
 from flask_login import login_required, current_user
 from sqlalchemy import func
 from werkzeug.utils import secure_filename
 from app import db
-from app.models import User, QRCode, Tag, Domain, ApiKey, ScanLog, ConditionalRedirect
-from app.utils import generate_qr_image, generate_qr_svg
+from app.models import User, QRCode, Tag, Domain, ApiKey, ScanLog, ConditionalRedirect, AuditLog
+from app.utils import generate_qr_image, generate_qr_svg, log_audit
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
 
 
+
+
+# Regex de hostname valido (etiquetas alfanumericas, guion medio, puntos)
+DOMAIN_RE = re.compile(
+    r'^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$'
+)
 
 
 def admin_required(f):
@@ -81,7 +88,7 @@ def dashboard():
     recent_qrs = get_user_qrs().limit(10).all()
 
     scans_by_day = db.session.query(
-        func.date_trunc('day', ScanLog.scanned_at).label('day'),
+        func.date_trunc('day', func.timezone('America/Santiago', ScanLog.scanned_at)).label('day'),
         func.count(ScanLog.id).label('count')
     ).join(QRCode).filter(
         QRCode.is_deleted == False,
@@ -142,6 +149,7 @@ def qr_create():
         _populate_qr_from_form(qr)
         db.session.add(qr)
         db.session.commit()
+        log_audit('create_qr', 'qr', qr.id, f'slug={qr.slug} title={qr.title}')
         flash('QR creado exitosamente.', 'success')
         return redirect(url_for('admin.qr_detail', qr_id=qr.id))
 
@@ -209,6 +217,7 @@ def qr_edit(qr_id):
         _populate_qr_from_form(qr)
         qr.updated_at = datetime.now(timezone.utc)
         db.session.commit()
+        log_audit('update_qr', 'qr', qr.id, f'slug={qr.slug} title={qr.title}')
         flash('QR actualizado exitosamente.', 'success')
         return redirect(url_for('admin.qr_detail', qr_id=qr.id))
 
@@ -256,6 +265,7 @@ def qr_toggle(qr_id):
     _check_owner(qr)
     qr.is_active = not qr.is_active
     db.session.commit()
+    log_audit('toggle_qr', 'qr', qr.id, f'slug={qr.slug} active={qr.is_active}')
     estado = 'activado' if qr.is_active else 'desactivado'
     flash(f'QR {estado}.', 'success')
     return redirect(url_for('admin.qr_detail', qr_id=qr.id))
@@ -268,6 +278,7 @@ def qr_delete(qr_id):
     _check_owner(qr)
     qr.soft_delete()
     db.session.commit()
+    log_audit('delete_qr', 'qr', qr.id, f'slug={qr.slug}')
     flash('QR enviado a la papelera.', 'warning')
     return redirect(url_for('admin.qr_list'))
 
@@ -279,6 +290,7 @@ def qr_restore(qr_id):
     _check_owner(qr)
     qr.restore()
     db.session.commit()
+    log_audit('restore_qr', 'qr', qr.id, f'slug={qr.slug}')
     flash('QR restaurado.', 'success')
     return redirect(url_for('admin.qr_detail', qr_id=qr.id))
 
@@ -290,6 +302,7 @@ def qr_destroy(qr_id):
     _check_owner(qr)
     db.session.delete(qr)
     db.session.commit()
+    log_audit('destroy_qr', 'qr', qr_id, f'slug={qr.slug}')
     flash('QR eliminado permanentemente.', 'info')
     return redirect(url_for('admin.qr_trash'))
 
@@ -311,6 +324,7 @@ def qr_trash_empty():
     for qr in qrs:
         db.session.delete(qr)
     db.session.commit()
+    log_audit('empty_trash', 'qr', None, f'{len(qrs)} QR eliminados permanentemente')
     flash('Papelera vaciada.', 'info')
     return redirect(url_for('admin.qr_trash'))
 
@@ -342,6 +356,7 @@ def tag_create():
     tag = Tag(name=name, color=color, user_id=current_user.id)
     db.session.add(tag)
     db.session.commit()
+    log_audit('create_tag', 'tag', tag.id, name)
     flash('Tag creado.', 'success')
     return redirect(url_for('admin.tag_list'))
 
@@ -356,6 +371,7 @@ def tag_edit(tag_id):
     tag.name = request.form.get('name', tag.name).strip()
     tag.color = request.form.get('color', tag.color)
     db.session.commit()
+    log_audit('update_tag', 'tag', tag.id, tag.name)
     flash('Tag actualizado.', 'success')
     return redirect(url_for('admin.tag_list'))
 
@@ -369,6 +385,7 @@ def tag_delete(tag_id):
         return redirect(url_for('admin.tag_list'))
     db.session.delete(tag)
     db.session.commit()
+    log_audit('delete_tag', 'tag', tag_id, tag.name)
     flash('Tag eliminado.', 'info')
     return redirect(url_for('admin.tag_list'))
 
@@ -392,11 +409,18 @@ def user_create():
         user.full_name = request.form.get('full_name', '').strip()
         user.role = request.form.get('role', User.ROLE_EDITOR)
         user.set_password(request.form.get('password', ''))
-        if not user.username or not user.email:
-            flash('Usuario y email son obligatorios.', 'danger')
+        if not user.username or not user.email or '@' not in user.email:
+            flash('Usuario y email valido son obligatorios.', 'danger')
             return render_template('user_form.html', user=None)
+        if User.query.filter_by(username=user.username).first():
+            flash('Ese nombre de usuario ya existe.', 'danger')
+            return render_template('user_form.html', user=None)
+        # El admin ya dio el visto bueno al crear -> aprobado directo
+        user.is_approved = True
+        user.is_active_user = True
         db.session.add(user)
         db.session.commit()
+        log_audit('create_user', 'user', user.id, f'username={user.username} role={user.role}')
         flash('Usuario creado.', 'success')
         return redirect(url_for('admin.user_list'))
     return render_template('user_form.html', user=None)
@@ -416,6 +440,7 @@ def user_edit(user_id):
         if password:
             user.set_password(password)
         db.session.commit()
+        log_audit('update_user', 'user', user.id, f'username={user.username} role={user.role} active={user.is_active_user}')
         flash('Usuario actualizado.', 'success')
         return redirect(url_for('admin.user_list'))
     return render_template('user_form.html', user=user)
@@ -429,6 +454,7 @@ def user_approve(user_id):
     user.is_approved = True
     user.is_active_user = True
     db.session.commit()
+    log_audit('approve_user', 'user', user.id, user.username)
     flash(f'Usuario {user.username} aprobado. Ya puede ingresar.', 'success')
     return redirect(url_for('admin.user_list'))
 
@@ -441,6 +467,7 @@ def user_reject(user_id):
     user.is_approved = False
     user.is_active_user = False
     db.session.commit()
+    log_audit('reject_user', 'user', user.id, user.username)
     flash(f'Usuario {user.username} rechazado.', 'warning')
     return redirect(url_for('admin.user_list'))
 
@@ -473,12 +500,14 @@ def user_delete(user_id):
         # cascade 'all, delete-orphan' borra sus QR; escaneos/redirecciones cierran via ondelete=CASCADE
         db.session.delete(user)
         db.session.commit()
+        log_audit('delete_user', 'user', user_id, f'username={user.username} delete_qrs=1 ({n_qrs} QR)')
         flash(f'Usuario {user.username} eliminado permanentemente junto con sus {n_qrs} QR y {n_keys} API keys.', 'info')
     else:
         # Transferir sus QR al admin que ejecuta la accion (conserva el historial de escaneos)
         user.qr_codes.update({'user_id': current_user.id})
         db.session.delete(user)  # api_keys via cascade
         db.session.commit()
+        log_audit('delete_user', 'user', user_id, f'username={user.username} transfer={n_qrs} QR a {current_user.username}')
         flash(f'Usuario {user.username} eliminado. Sus {n_qrs} QR fueron transferidos a tu cuenta.', 'success')
     return redirect(url_for('admin.user_list'))
 
@@ -509,6 +538,7 @@ def api_key_create():
     )
     db.session.add(api_key)
     db.session.commit()
+    log_audit('create_api_key', 'api_key', api_key.id, name)
     session['new_api_key'] = raw_key
     session['new_api_key_name'] = name
     flash('API Key creada. Copiala ahora, no se mostrara de nuevo.', 'success')
@@ -532,6 +562,7 @@ def api_key_delete(key_id):
         return redirect(url_for('admin.api_key_list'))
     db.session.delete(key)
     db.session.commit()
+    log_audit('delete_api_key', 'api_key', key_id, key.name)
     flash('API Key eliminada.', 'info')
     return redirect(url_for('admin.api_key_list'))
 
@@ -554,8 +585,8 @@ def domain_create():
     if not domain_name:
         flash('El dominio es obligatorio.', 'danger')
         return redirect(url_for('admin.domain_list'))
-    if ' ' in domain_name or '/' in domain_name:
-        flash('Dominio invalido: usa solo el nombre (ej: qr.ifop.cl).', 'danger')
+    if len(domain_name) > 253 or not DOMAIN_RE.match(domain_name):
+        flash('Dominio invalido: usa un hostname valido (ej: qr.ifop.cl, misiones.ifop.cl).', 'danger')
         return redirect(url_for('admin.domain_list'))
     if Domain.query.filter_by(domain=domain_name).first():
         flash('Ese dominio ya existe.', 'warning')
@@ -563,6 +594,7 @@ def domain_create():
     domain = Domain(domain=domain_name, user_id=current_user.id)
     db.session.add(domain)
     db.session.commit()
+    log_audit('create_domain', 'domain', domain.id, domain_name)
     flash(f'Dominio {domain_name} agregado.', 'success')
     return redirect(url_for('admin.domain_list'))
 
@@ -573,6 +605,7 @@ def domain_toggle(domain_id):
     domain = Domain.query.get_or_404(domain_id)
     domain.is_active = not domain.is_active
     db.session.commit()
+    log_audit('toggle_domain', 'domain', domain.id, f'{domain.domain} active={domain.is_active}')
     flash('Dominio actualizado.', 'success')
     return redirect(url_for('admin.domain_list'))
 
@@ -607,6 +640,7 @@ def import_export():
             except Exception:
                 errors += 1
         db.session.commit()
+        log_audit('import_qr', 'qr', None, f'{created} importados, {errors} errores')
         flash(f'Importados {created} QR. Errores: {errors}.', 'success')
         return redirect(url_for('admin.import_export'))
 
@@ -652,6 +686,8 @@ def conditional_redirects(qr_id):
         )
         db.session.add(cr)
         db.session.commit()
+        log_audit('create_conditional_redirect', 'conditional_redirect', cr.id,
+                  f'qr={qr.slug} device={cr.device_type} -> {cr.target_url}')
         flash('Redireccion condicional agregada.', 'success')
         return redirect(url_for('admin.conditional_redirects', qr_id=qr.id))
     redirects = qr.conditional_redirects.order_by(ConditionalRedirect.priority.desc()).all()
@@ -667,6 +703,7 @@ def conditional_redirect_delete(cr_id):
         _check_owner(qr)
     db.session.delete(cr)
     db.session.commit()
+    log_audit('delete_conditional_redirect', 'conditional_redirect', cr_id, f'qr={qr.slug if qr else "?"}')
     flash('Redireccion condicional eliminada.', 'info')
     return redirect(url_for('admin.conditional_redirects', qr_id=cr.qr_id))
 
@@ -726,7 +763,18 @@ def _populate_qr_from_form(qr):
     qr.domain_id = domain_id if domain_id else None
 
     expires_at = request.form.get('expires_at', '')
-    qr.expires_at = datetime.fromisoformat(expires_at) if expires_at else None
+    if expires_at:
+        try:
+            from datetime import datetime as _dt
+            from zoneinfo import ZoneInfo
+            _parsed = _dt.fromisoformat(expires_at)
+            if _parsed.tzinfo is None:
+                _parsed = _parsed.replace(tzinfo=ZoneInfo('America/Santiago'))
+            qr.expires_at = _parsed.astimezone(timezone.utc)
+        except (ValueError, TypeError):
+            qr.expires_at = None
+    else:
+        qr.expires_at = None
 
     qr.max_scans = request.form.get('max_scans', type=int)
     if qr.max_scans == 0:
@@ -763,3 +811,147 @@ def _populate_qr_from_form(qr):
         qr.tags = Tag.query.filter(Tag.id.in_(tag_ids)).all()
 
     qr.updated_at = datetime.now(timezone.utc)
+
+
+# ─── Analytics avanzado (Fase 2) ───
+
+@admin_bp.route('/analytics')
+@login_required
+def analytics():
+    days = min(request.args.get('days', 30, type=int) or 30, 365)
+
+    since = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0) - __import__('datetime').timedelta(days=days)
+
+    base_scans = ScanLog.query.join(QRCode).filter(
+        QRCode.is_deleted == False,
+        ScanLog.scanned_at >= since,
+    )
+    if not current_user.is_admin:
+        base_scans = base_scans.filter(QRCode.user_id == current_user.id)
+
+    # Por dia
+    by_day = db.session.query(
+        func.date_trunc('day', func.timezone('America/Santiago', ScanLog.scanned_at)).label('day'),
+        func.count(ScanLog.id).label('count')
+    ).join(QRCode).filter(
+        QRCode.is_deleted == False,
+        ScanLog.scanned_at >= since,
+    )
+    if not current_user.is_admin:
+        by_day = by_day.filter(QRCode.user_id == current_user.id)
+    by_day = by_day.group_by('day').order_by('day').all()
+
+    # Por dispositivo / OS / navegador / hora
+    def _grouped(col):
+        q = db.session.query(col.label('k'), func.count(ScanLog.id).label('c')) \
+            .join(QRCode).filter(
+                QRCode.is_deleted == False,
+                ScanLog.scanned_at >= since,
+            )
+        if not current_user.is_admin:
+            q = q.filter(QRCode.user_id == current_user.id)
+        return q.group_by('k').order_by(func.count(ScanLog.id).desc()).all()
+
+    by_device = _grouped(ScanLog.device_type)
+    by_os = _grouped(ScanLog.os_name)
+    by_browser = _grouped(ScanLog.browser)
+
+    # Por hora del dia
+    by_hour = db.session.query(
+        func.extract('hour', func.timezone('America/Santiago', ScanLog.scanned_at)).label('h'),
+        func.count(ScanLog.id).label('c')
+    ).join(QRCode).filter(
+        QRCode.is_deleted == False,
+        ScanLog.scanned_at >= since,
+    )
+    if not current_user.is_admin:
+        by_hour = by_hour.filter(QRCode.user_id == current_user.id)
+    by_hour = by_hour.group_by('h').order_by('h').all()
+    hour_map = {int(r.h): r.c for r in by_hour}
+    by_hour_series = [hour_map.get(h, 0) for h in range(24)]
+
+    # Top QRs
+    top_qrs = get_user_qrs().filter(QRCode.is_active == True) \
+        .order_by(QRCode.scan_count.desc()).limit(10).all()
+
+    # Escaneos con coordenadas para el mapa (ultimos 500)
+    map_scans = base_scans.filter(
+        ScanLog.latitude.isnot(None),
+        ScanLog.longitude.isnot(None),
+    ).order_by(ScanLog.scanned_at.desc()).limit(500).all()
+
+    total_scans = base_scans.count()
+
+    return render_template('analytics.html',
+                         days=days, total_scans=total_scans,
+                         by_day=by_day,
+                         by_device=by_device, by_os=by_os, by_browser=by_browser,
+                         by_hour_series=by_hour_series,
+                         top_qrs=top_qrs, map_scans=map_scans)
+
+
+# ─── Auditoria (solo admin) ───
+
+@admin_bp.route('/auditoria')
+@admin_required
+def audit_logs():
+    page = request.args.get('page', 1, type=int)
+    action = request.args.get('action', '').strip()
+    q = request.args.get('q', '').strip()
+
+    query = AuditLog.query.order_by(AuditLog.created_at.desc())
+    if action:
+        query = query.filter(AuditLog.action == action)
+    if q:
+        like = f'%{q}%'
+        query = query.filter(
+            db.or_(
+                AuditLog.username.ilike(like),
+                AuditLog.details.ilike(like),
+                AuditLog.entity_type.ilike(like),
+            )
+        )
+    pagination = query.paginate(page=page, per_page=50, error_out=False)
+    actions = [r[0] for r in db.session.query(AuditLog.action).distinct().order_by(AuditLog.action).all()]
+    return render_template('audit_logs.html', logs=pagination.items,
+                         pagination=pagination, actions=actions,
+                         action=action, q=q)
+
+
+# ─── Documentacion API (pro) ───
+
+@admin_bp.route('/api-docs')
+@editor_required
+def api_docs():
+    return render_template('api_docs.html')
+
+
+# ─── Export de escaneos de un QR a CSV ───
+
+@admin_bp.route('/qr/<int:qr_id>/scans/export')
+@login_required
+def qr_scans_export(qr_id):
+    qr = QRCode.query.get_or_404(qr_id)
+    _check_owner(qr)
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['id', 'scanned_at', 'ip_address', 'device_type', 'browser',
+                     'os_name', 'country', 'city', 'region', 'latitude', 'longitude',
+                     'is_proxy', 'proxy_type', 'redirect_url'])
+    for s in qr.scans.order_by(ScanLog.scanned_at.desc()).all():
+        writer.writerow([
+            s.id,
+            s.scanned_at.isoformat() if s.scanned_at else '',
+            s.ip_address or '', s.device_type or '', s.browser or '', s.os_name or '',
+            s.country or '', s.city or '', s.region or '',
+            s.latitude if s.latitude is not None else '',
+            s.longitude if s.longitude is not None else '',
+            s.is_proxy, s.proxy_type or '', s.redirect_url or '',
+        ])
+    output.seek(0)
+    return Response(
+        output.getvalue(),
+        mimetype='text/csv',
+        headers={'Content-Disposition': f'attachment;filename=scans_{qr.slug}.csv'}
+    )

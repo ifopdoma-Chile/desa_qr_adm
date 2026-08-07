@@ -20,7 +20,7 @@
                     <td>{{ qr.slug }}</td>
                     <td>{{ qr.title }}</td>
                     <td><span class="badge badge-info">{{ qr.qr_type }}</span></td>
-                    <td>{{ qr.deleted_at.strftime('%d/%m/%Y %H:%M') if qr.deleted_at else '-' }}</td>
+                    <td>{{ qr.deleted_at|localtime if qr.deleted_at else '-' }}</td>
                     <td class="actions">
                         <form method="POST" action="{{ url_for('admin.qr_restore', qr_id=qr.id) }}" style="display:inline;">
                             <button type="submit" class="btn btn-sm btn-success">Restaurar</button>

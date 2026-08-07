@@ -32,8 +32,8 @@ class User(UserMixin, db.Model):
     full_name = db.Column(db.String(200))
     role = db.Column(db.String(20), nullable=False, default=ROLE_EDITOR)
     is_active_user = db.Column(db.Boolean, default=True, nullable=False)
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-    last_login = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    last_login = db.Column(db.DateTime(timezone=True))
     google_id = db.Column(db.String(100), unique=True, nullable=True, index=True)
     is_approved = db.Column(db.Boolean, default=False, nullable=False)
 
@@ -52,7 +52,8 @@ class User(UserMixin, db.Model):
 
     @property
     def qr_count(self):
-        return self.qr_codes.count()
+        # Solo QR activos/no borrados (la papelera no consume cuota)
+        return self.qr_codes.filter_by(is_deleted=False).count()
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -74,7 +75,7 @@ class Domain(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     is_default = db.Column(db.Boolean, default=False, nullable=False)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     creator = db.relationship('User', backref='domains')
 
@@ -277,8 +278,8 @@ class QRCode(db.Model):
     # ── Status & lifecycle ──
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     is_deleted = db.Column(db.Boolean, default=False, nullable=False, index=True)
-    deleted_at = db.Column(db.DateTime)
-    expires_at = db.Column(db.DateTime)
+    deleted_at = db.Column(db.DateTime(timezone=True))
+    expires_at = db.Column(db.DateTime(timezone=True))
     max_scans = db.Column(db.Integer)       # None = unlimited
     scan_count = db.Column(db.Integer, default=0, nullable=False)
 
@@ -293,8 +294,8 @@ class QRCode(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
 
     # ── Timestamps ──
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc),
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
                            onupdate=lambda: datetime.now(timezone.utc))
 
     # ── Tags (many-to-many) ──
@@ -319,8 +320,22 @@ class QRCode(db.Model):
 
     @property
     def full_url(self):
-        base = self.domain.domain if self.domain else 'qr.ifop.cl'
-        return f'https://{base}/{self.slug}'
+        """URL publica del QR.
+
+        Si tiene dominio activo y resolvable (con punto), usa https://<dominio>/<slug>.
+        Si no, cae a la base publica de la app (sapogis.ifop.cl/qr).
+        """
+        base = None
+        if self.domain and self.domain.is_active and '.' in self.domain.domain:
+            base = self.domain.domain
+        if base:
+            return f'https://{base}/{self.slug}'
+        try:
+            from flask import current_app
+            pub = current_app.config.get('APP_PUBLIC_BASE', 'https://sapogis.ifop.cl/qr')
+        except Exception:
+            pub = 'https://sapogis.ifop.cl/qr'
+        return f'{pub}/{self.slug}'
 
     @property
     def domain_obj(self):
@@ -379,7 +394,7 @@ class Tag(db.Model):
     name = db.Column(db.String(100), nullable=False, index=True)
     color = db.Column(db.String(7), default='#2c6b9e')
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     creator = db.relationship('User', backref='tags')
 
@@ -402,7 +417,7 @@ class ConditionalRedirect(db.Model):
     target_url = db.Column(db.Text, nullable=False)
     priority = db.Column(db.Integer, default=0)
     is_active = db.Column(db.Boolean, default=True)
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     def __repr__(self):
         return f'<ConditionalRedirect {self.device_type} -> {self.target_url}>'
@@ -414,7 +429,7 @@ class ScanLog(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     qr_id = db.Column(db.Integer, db.ForeignKey('qr_codes.id', ondelete='CASCADE'), nullable=False, index=True)
-    scanned_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    scanned_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
 
     # Network
     ip_address = db.Column(db.String(45))
@@ -429,6 +444,8 @@ class ScanLog(db.Model):
     country = db.Column(db.String(100))
     city = db.Column(db.String(100))
     region = db.Column(db.String(100))
+    latitude = db.Column(db.Float)
+    longitude = db.Column(db.Float)
 
     # Proxy detection
     is_proxy = db.Column(db.Boolean, default=False)
@@ -444,6 +461,44 @@ class ScanLog(db.Model):
         return f'<ScanLog qr={self.qr_id} at {self.scanned_at}>'
 
 
+# ─── Token temporal (multi-worker seguro; antes era dict en memoria por worker) ───
+class TempToken(db.Model):
+    __tablename__ = 'temp_tokens'
+
+    id = db.Column(db.Integer, primary_key=True)
+    slug = db.Column(db.String(50), nullable=False, index=True)
+    token = db.Column(db.String(64), nullable=False, index=True)
+    expires_at = db.Column(db.DateTime(timezone=True), nullable=False, index=True)
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    @property
+    def is_valid(self):
+        exp = self.expires_at
+        if exp is None:
+            return False
+        if exp.tzinfo is None:
+            exp = exp.replace(tzinfo=timezone.utc)
+        return datetime.now(timezone.utc) < exp
+
+
+# ─── Log de auditoria (quien hizo que) ───
+class AuditLog(db.Model):
+    __tablename__ = 'audit_logs'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    username = db.Column(db.String(120))          # snapshot (sobrevive al borrado del user)
+    action = db.Column(db.String(50), nullable=False, index=True)
+    entity_type = db.Column(db.String(50), index=True)
+    entity_id = db.Column(db.Integer)
+    details = db.Column(db.Text)
+    ip_address = db.Column(db.String(45))
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
+
+    def __repr__(self):
+        return f'<AuditLog {self.action} by {self.username} at {self.created_at}>'
+
+
 # ─── API Key ───
 class ApiKey(db.Model):
     __tablename__ = 'api_keys'
@@ -454,13 +509,19 @@ class ApiKey(db.Model):
     key_prefix = db.Column(db.String(8), nullable=False)  # first 8 chars for display
     key_hash = db.Column(db.String(256), nullable=False)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
-    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-    last_used = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    last_used = db.Column(db.DateTime(timezone=True))
 
     @staticmethod
     def generate_key():
         raw = f'qr_{secrets.token_hex(32)}'
         return raw
+
+    @staticmethod
+    def find_by_key(raw_key):
+        """Busca una API key activa por su valor (hash sha256)."""
+        h = ApiKey.hash_key(raw_key)
+        return ApiKey.query.filter_by(key_hash=h, is_active=True).first()
 
     @staticmethod
     def hash_key(key):

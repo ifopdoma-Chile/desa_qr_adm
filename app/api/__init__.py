@@ -1,11 +1,56 @@
 from functools import wraps
 from datetime import datetime, timezone
-from flask import Blueprint, request, jsonify, abort
+from flask import Blueprint, request, jsonify, abort, current_app
 from sqlalchemy import func
 from app import db
 from app.models import QRCode, Tag, ApiKey, ScanLog, User
+from app.utils import log_audit
 
 api_bp = Blueprint('api', __name__)
+
+MAX_PER_PAGE = 100
+VALID_QR_TYPES = {t[0] for t in QRCode.QR_TYPES}
+
+
+def _cap_per_page(value, default=25):
+    try:
+        value = int(value)
+    except (TypeError, ValueError):
+        value = default
+    if value < 1:
+        value = default
+    return min(value, MAX_PER_PAGE)
+
+
+def _parse_datetime(value):
+    """Parsea ISO datetime o devuelve None; nunca lanza ValueError."""
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(value).replace('Z', '+00:00'))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except (ValueError, TypeError):
+        return None
+
+
+@api_bp.route('/health')
+def health():
+    """Health check publico (sin auth) para monitoreo."""
+    status = 'ok'
+    db_ok = True
+    try:
+        db.session.execute(db.text('SELECT 1'))
+    except Exception:
+        db_ok = False
+        status = 'error'
+    return jsonify({
+        'status': status,
+        'db': db_ok,
+        'version': current_app.config.get('VERSION', '2.0.0'),
+        'time': datetime.now(timezone.utc).isoformat(),
+    }), (200 if db_ok else 500)
 
 
 def authenticate(f):
@@ -32,10 +77,12 @@ def authenticate(f):
     return decorated
 
 
-def paginate(query, page, per_page=25):
+def paginate(query, page, per_page=25, serializer=None):
     pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+    if serializer is None:
+        serializer = lambda item: item.to_dict() if hasattr(item, 'to_dict') else None
     return {
-        'data': [item.to_dict() for item in pagination.items],
+        'data': [serializer(item) for item in pagination.items],
         'page': pagination.page,
         'per_page': pagination.per_page,
         'total': pagination.total,
@@ -71,7 +118,7 @@ def qr_to_dict(qr):
 @authenticate
 def list_qrs(user):
     page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 25, type=int)
+    per_page = _cap_per_page(request.args.get('per_page', 25), 25)
     q = request.args.get('q', '')
     qr_type = request.args.get('type', '')
     tag = request.args.get('tag', '')
@@ -87,7 +134,7 @@ def list_qrs(user):
         query = query.filter(QRCode.tags.any(Tag.name == tag))
 
     query = query.order_by(QRCode.updated_at.desc())
-    result = paginate(query, page, per_page)
+    result = paginate(query, page, per_page, serializer=qr_to_dict)
     return jsonify(result)
 
 
@@ -99,9 +146,14 @@ def create_qr(user):
     data = request.get_json() or {}
     qr = QRCode()
     qr.user_id = user.id
-    qr.title = data.get('title', 'Sin titulo')[:200]
+    qr.title = (data.get('title') or 'Sin titulo')[:200]
     qr.qr_type = data.get('qr_type', 'url')
-    qr.slug = data.get('slug', '').strip() or QRCode.generate_slug()
+    if qr.qr_type not in VALID_QR_TYPES:
+        return jsonify({'error': f'qr_type invalido: {qr.qr_type}'}), 400
+    slug = data.get('slug', '').strip() or QRCode.generate_slug()
+    if QRCode.query.filter_by(slug=slug).first():
+        return jsonify({'error': 'El slug ya existe. Usa otro o dejalo vacio para auto-generar.'}), 400
+    qr.slug = slug
     qr.description = data.get('description', '')
     qr.content_url = data.get('content_url', '')
     qr.content_text = data.get('content_text', '')
@@ -135,8 +187,17 @@ def create_qr(user):
         qr.content_jsonb = data.get('content_jsonb', {})
 
     expires_at = data.get('expires_at')
-    qr.expires_at = datetime.fromisoformat(expires_at) if expires_at else None
-    qr.max_scans = data.get('max_scans', type=int)
+    qr.expires_at = _parse_datetime(expires_at)
+    if expires_at and not qr.expires_at:
+        return jsonify({'error': 'expires_at debe ser una fecha ISO valida (ej: 2027-01-31T23:59:59Z)'}), 400
+    max_scans = data.get('max_scans')
+    if max_scans is not None:
+        try:
+            qr.max_scans = int(max_scans) or None
+        except (TypeError, ValueError):
+            return jsonify({'error': 'max_scans debe ser un numero entero'}), 400
+    else:
+        qr.max_scans = None
 
     tag_names = data.get('tags', [])
     if tag_names:
@@ -152,6 +213,7 @@ def create_qr(user):
 
     db.session.add(qr)
     db.session.commit()
+    log_audit('api_create_qr', 'qr', qr.id, f'slug={qr.slug} title={qr.title}')
     return jsonify(qr_to_dict(qr)), 201
 
 
@@ -193,9 +255,15 @@ def update_qr(slug, user):
     if 'content_jsonb' in data:
         qr.content_jsonb = data['content_jsonb']
     if 'expires_at' in data:
-        qr.expires_at = datetime.fromisoformat(data['expires_at']) if data['expires_at'] else None
+        parsed = _parse_datetime(data['expires_at'])
+        if data['expires_at'] and not parsed:
+            return jsonify({'error': 'expires_at debe ser una fecha ISO valida'}), 400
+        qr.expires_at = parsed
     if 'max_scans' in data:
-        qr.max_scans = data['max_scans']
+        try:
+            qr.max_scans = int(data['max_scans']) or None
+        except (TypeError, ValueError):
+            return jsonify({'error': 'max_scans debe ser un numero entero'}), 400
     if 'tags' in data:
         tag_names = data['tags']
         existing = Tag.query.filter(Tag.name.in_(tag_names), Tag.user_id == user.id).all()
@@ -230,6 +298,7 @@ def delete_qr(slug, user):
     else:
         qr.soft_delete()
     db.session.commit()
+    log_audit('api_delete_qr', 'qr', qr.id, f'slug={qr.slug} hard={hard}')
     return jsonify({'message': 'Eliminado'}), 200
 
 
@@ -276,9 +345,9 @@ def analytics_overview(user):
 @api_bp.route('/analytics/scans-by-day')
 @authenticate
 def analytics_scans_by_day(user):
-    days = request.args.get('days', 30, type=int)
+    days = min(request.args.get('days', 30, type=int) or 30, 365)
     query = db.session.query(
-        func.date_trunc('day', ScanLog.scanned_at).label('day'),
+        func.date_trunc('day', func.timezone('America/Santiago', ScanLog.scanned_at)).label('day'),
         func.count(ScanLog.id).label('count')
     ).join(QRCode).filter(
         QRCode.is_deleted == False,
@@ -293,7 +362,7 @@ def analytics_scans_by_day(user):
 @api_bp.route('/analytics/top-qrs')
 @authenticate
 def analytics_top_qrs(user):
-    limit = request.args.get('limit', 10, type=int)
+    limit = min(request.args.get('limit', 10, type=int) or 10, 50)
     query = QRCode.query.filter_by(is_deleted=False, is_active=True)\
         .order_by(QRCode.scan_count.desc())
     if not user.is_admin:
@@ -312,7 +381,7 @@ def qr_scans(slug, user):
         return jsonify({'error': 'No tienes permiso'}), 403
 
     page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 50, type=int)
+    per_page = _cap_per_page(request.args.get('per_page', 50), 50)
     scans = qr.scans.order_by(ScanLog.scanned_at.desc()).paginate(
         page=page, per_page=per_page, error_out=False
     )

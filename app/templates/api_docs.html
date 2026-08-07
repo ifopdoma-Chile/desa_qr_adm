@@ -1,0 +1,49 @@
+{% extends 'base.html' %}
+{% block title %}API - {{ app_name }}{% endblock %}
+
+{% block content %}
+<h2 style="margin-bottom:16px;">🔌 Documentación de la API REST</h2>
+
+<div class="card" style="margin-bottom:16px;background:#eef3fb;border-left:4px solid #1954A2;padding:12px 16px;">
+    <strong>Autenticación:</strong> todas las rutas requieren el header
+    <code>Authorization: Bearer &lt;TU_API_KEY&gt;</code> (excepto <code>/api/v1/health</code>).
+    Genera tu API key en <a href="{{ url_for('admin.api_key_list') }}">API Keys</a>.
+    La URL base es <code>https://sapogis.ifop.cl/api/v1</code>.
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:16px;">
+    {% for endpoint in [
+        ('GET /qrs', 'Lista de QR (paginado). Filtros: ?page=1&per_page=25&q=texto&type=url&tag=nombre'),
+        ('POST /qrs', 'Crear QR. Body JSON con title, qr_type, slug (opcional), contenido segun tipo, expires_at (ISO), max_scans, tags.'),
+        ('GET /qrs/<slug>', 'Detalle de un QR por slug.'),
+        ('PUT /qrs/<slug>', 'Actualizar QR (campos parciales).'),
+        ('DELETE /qrs/<slug>?hard=true', 'Eliminar (papelera). hard=true lo borra definitivamente (solo admin).'),
+        ('POST /qrs/<slug>/restore', 'Restaurar QR de la papelera.'),
+        ('GET /qrs/<slug>/scans', 'Escaneos de un QR. ?page=1&per_page=50'),
+        ('GET /analytics/overview', 'Totales: QR, activos, escaneos.'),
+        ('GET /analytics/scans-by-day', 'Escaneos por día. ?days=30'),
+        ('GET /analytics/top-qrs', 'Top QR por escaneos. ?limit=10'),
+        ('GET /tags', 'Lista de tags.'),
+        ('GET /qr/<slug>/download?size=1024&token=...', 'Descargar imagen PNG/SVG. Primero obtén un token temporal en GET /qr/temp-token/<slug>.'),
+        ('GET /health', 'Health check público (sin auth).'),
+    ] %}
+    <div class="chart-card" style="background:#fff;border:1px solid #dee2e6;border-radius:8px;padding:14px;">
+        <code style="font-weight:700;color:#1954A2;">{{ endpoint[0] }}</code>
+        <p style="margin:8px 0 0;color:#495057;font-size:.9rem;">{{ endpoint[1] }}</p>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="card" style="margin-top:16px;">
+    <h3 style="margin-bottom:8px;">Ejemplo rápido (curl)</h3>
+    <pre style="background:#0b1f33;color:#e9f2fb;padding:14px;border-radius:8px;overflow:auto;font-size:.85rem;"># Crear un QR de tipo URL
+curl -X POST https://sapogis.ifop.cl/api/v1/qrs \
+  -H "Authorization: Bearer TU_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"title":"Web IFOP","qr_type":"url","content_url":"https://www.ifop.cl","slug":"ifop-web"}'
+
+# Ver escaneos de un QR
+curl "https://sapogis.ifop.cl/api/v1/qrs/ifop-web/scans" \
+  -H "Authorization: Bearer TU_API_KEY"</pre>
+</div>
+{% endblock %}

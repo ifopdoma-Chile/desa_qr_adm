@@ -21,6 +21,8 @@ class Config:
     # App
     APP_NAME = 'IFOP QR Manager'
     APP_BASE_URL = os.environ.get('APP_BASE_URL', 'https://qr.ifop.cl')
+    APP_PUBLIC_BASE = os.environ.get('APP_PUBLIC_BASE', 'https://sapogis.ifop.cl/qr')
+    VERSION = '2.1.0'
     MAX_SLUG_LENGTH = 50
 
     # QR Generation
@@ -32,7 +34,17 @@ class Config:
     QR_MAX_PER_USER = 500
     RATE_LIMIT_DEFAULT = '200/hour'
     RATE_LIMIT_SCAN = '60/minute'
+    RATE_LIMIT_LOGIN = '10/minute'
+    RATE_LIMIT_TEMP_TOKEN = '30/minute'
+    RATE_LIMIT_DOWNLOAD = '60/minute'
     RATELIMIT_STORAGE_URL = os.environ.get('RATELIMIT_STORAGE_URL', 'memory://')
+
+    # Cookies
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SECURE = True
+    SESSION_COOKIE_SAMESITE = 'Lax'
+    REMEMBER_COOKIE_SECURE = True
+    REMEMBER_COOKIE_HTTPONLY = True
 
     # Geolocation cache
     GEO_CACHE_TTL = 86400  # 24h

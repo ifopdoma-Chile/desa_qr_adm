@@ -1,5 +1,8 @@
 import os
-from flask import Flask
+import re
+import secrets
+from datetime import datetime
+from flask import Flask, request, session, g
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager
 from flask_migrate import Migrate
@@ -29,6 +32,63 @@ class ReverseProxyPrefix:
         return self.app(environ, start_response)
 
 
+# ─── CSRF (sin dependencias externas) ───
+
+CSRF_FIELD = '_csrf_token'
+_CSRF_FORM_RE = re.compile(r'(<form[^>]*method=["\']POST["\'][^>]*>)', re.IGNORECASE)
+_CSRF_INPUT = '<input type="hidden" name="%s" value="%s">'
+
+
+def generate_csrf_token():
+    """Token CSRF estable por sesion."""
+    if CSRF_FIELD not in session:
+        session[CSRF_FIELD] = secrets.token_urlsafe(32)
+    return session[CSRF_FIELD]
+
+
+def validate_csrf():
+    """Valida el token CSRF en toda mutacion que no sea API (Bearer)."""
+    if request.method not in ('POST', 'PUT', 'PATCH', 'DELETE'):
+        return
+    if request.path.startswith('/api/v1'):
+        return  # API autenticada por Bearer token
+    if request.path.startswith('/qr/temp-token'):
+        return  # requiere Authorization header propio
+    token = request.form.get(CSRF_FIELD) or request.headers.get('X-CSRF-Token')
+    expected = session.get(CSRF_FIELD)
+    if not expected or not token or not secrets.compare_digest(token, expected):
+        from flask import abort, jsonify
+        if request.path.startswith('/api/'):
+            return
+        abort(400, description='Token CSRF invalido o faltante. Recarga la pagina e intenta de nuevo.')
+
+
+def inject_csrf(response):
+    """Inyecta el campo CSRF en todos los formularios POST de respuestas HTML."""
+    if response.content_type != 'text/html; charset=utf-8' and not (
+        response.content_type or '').startswith('text/html'):
+        return response
+    token = generate_csrf_token()
+    field = _CSRF_INPUT % (CSRF_FIELD, token)
+
+    def _replace(match):
+        form_tag = match.group(1)
+        # Evitar doble inyeccion si el form ya trae el campo
+        tail = response.get_data(as_text=True)[match.end():match.end() + 300]
+        if CSRF_FIELD in tail:
+            return form_tag
+        return form_tag + field
+
+    try:
+        body = response.get_data(as_text=True)
+        new_body, n = _CSRF_FORM_RE.subn(_replace, body)
+        if n:
+            response.set_data(new_body)
+    except Exception:
+        pass
+    return response
+
+
 def create_app(config_name='default'):
     app = Flask(__name__)
 
@@ -37,6 +97,13 @@ def create_app(config_name='default'):
 
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
     app.wsgi_app = ReverseProxyPrefix(app.wsgi_app)
+
+    # Seguridad de cookies de sesion
+    app.config.setdefault('SESSION_COOKIE_HTTPONLY', True)
+    app.config.setdefault('SESSION_COOKIE_SECURE', True)
+    app.config.setdefault('SESSION_COOKIE_SAMESITE', 'Lax')
+    app.config.setdefault('REMEMBER_COOKIE_SECURE', True)
+    app.config.setdefault('REMEMBER_COOKIE_HTTPONLY', True)
 
     # Extensions
     db.init_app(app)
@@ -47,10 +114,26 @@ def create_app(config_name='default'):
     migrate.init_app(app, db)
     limiter.init_app(app)
 
+    # CSRF: validacion global + inyeccion en formularios
+    app.before_request(validate_csrf)
+    app.after_request(inject_csrf)
+
     @login_manager.user_loader
     def load_user(user_id):
         from app.models import User
         return db.session.get(User, int(user_id))
+
+    @app.template_filter('localtime')
+    def localtime_filter(dt, fmt='%d/%m/%Y %H:%M'):
+        """Formatea datetime en hora local de Chile (America/Santiago)."""
+        if dt is None:
+            return ''
+        try:
+            if getattr(dt, 'tzinfo', None) is not None:
+                dt = dt.astimezone()
+            return dt.strftime(fmt)
+        except Exception:
+            return str(dt)
 
     # Template globals
     @app.context_processor
@@ -66,8 +149,10 @@ def create_app(config_name='default'):
         return dict(
             app_name=app.config.get('APP_NAME', 'QR Manager'),
             app_base_url=app.config.get('APP_BASE_URL', ''),
-            current_year=__import__('datetime').datetime.now().year,
+            app_version=app.config.get('VERSION', '2.0.0'),
+            current_year=datetime.now().year,
             pending_users_count=pending,
+            csrf_token=generate_csrf_token,
         )
 
     # Register blueprints
@@ -82,11 +167,13 @@ def create_app(config_name='default'):
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp)
-    app.register_blueprint(qr_bp, url_prefix='/qr')
+    # qr_bp se registra en raiz porque nginx /qr/ quita el prefijo al proxear
+    # (url_for genera /qr/... via X-Forwarded-Prefix/SCRIPT_NAME)
+    app.register_blueprint(qr_bp)
     app.register_blueprint(api_bp, url_prefix='/api/v1')
     app.register_blueprint(redirect_bp)
 
-    # Create tables
+    # Create tables (nuevas tablas: temp_tokens, audit_logs)
     with app.app_context():
         from app import models
         db.create_all()

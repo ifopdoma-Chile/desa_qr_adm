@@ -30,7 +30,7 @@
                             <span class="badge badge-warning">Pendiente</span>
                         {% endif %}
                     </td>
-                    <td>{{ u.last_login.strftime('%d/%m/%Y %H:%M') if u.last_login else '-' }}</td>
+                    <td>{{ u.last_login|localtime if u.last_login else '-' }}</td>
                     <td class="actions">
                         {% if not u.is_approved %}
                         <form method="POST" action="{{ url_for('admin.user_approve', user_id=u.id) }}" style="display:inline;">

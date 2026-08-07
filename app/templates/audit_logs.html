@@ -1,0 +1,58 @@
+{% extends 'base.html' %}
+{% block title %}Auditoría - {{ app_name }}{% endblock %}
+
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
+    <h2 style="margin:0;">🛡️ Log de auditoría</h2>
+    <form method="GET" style="display:flex;gap:8px;flex-wrap:wrap;">
+        <input type="text" name="q" value="{{ q }}" placeholder="Buscar usuario/detalle..." class="form-control" style="max-width:220px;">
+        <select name="action" class="form-control" style="max-width:220px;">
+            <option value="">Todas las acciones</option>
+            {% for a in actions %}
+            <option value="{{ a }}" {% if action == a %}selected{% endif %}>{{ a }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-primary btn-sm">Filtrar</button>
+        <a href="{{ url_for('admin.audit_logs') }}" class="btn btn-outline btn-sm">Limpiar</a>
+    </form>
+</div>
+
+<div class="card" style="overflow:auto;">
+    <table class="table" style="min-width:800px;">
+        <thead>
+            <tr>
+                <th>Fecha</th>
+                <th>Usuario</th>
+                <th>Acción</th>
+                <th>Entidad</th>
+                <th>Detalle</th>
+                <th>IP</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for log in logs %}
+            <tr>
+                <td style="white-space:nowrap;">{{ log.created_at|localtime('%Y-%m-%d %H:%M') if log.created_at else '' }}</td>
+                <td>{{ log.username or '—' }}</td>
+                <td><span class="pill" style="background:#eef3fb;color:#1954A2;padding:2px 8px;border-radius:10px;font-size:.8rem;">{{ log.action }}</span></td>
+                <td>{{ log.entity_type or '' }}{% if log.entity_id %}#{{ log.entity_id }}{% endif %}</td>
+                <td style="max-width:380px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ log.details }}">{{ log.details or '' }}</td>
+                <td style="white-space:nowrap;">{{ log.ip_address or '' }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="6" style="text-align:center;color:#6c757d;">Sin registros.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if pagination and pagination.pages > 1 %}
+<div class="pagination">
+    {% if pagination.has_prev %}<a href="{{ url_for('admin.audit_logs', page=pagination.prev_num, action=action, q=q) }}">&laquo;</a>{% endif %}
+    {% for p in pagination.iter_pages() %}
+        {% if p %}<a href="{{ url_for('admin.audit_logs', page=p, action=action, q=q) }}" class="{% if p == pagination.page %}current{% endif %}">{{ p }}</a>{% else %}<span>...</span>{% endif %}
+    {% endfor %}
+    {% if pagination.has_next %}<a href="{{ url_for('admin.audit_logs', page=pagination.next_num, action=action, q=q) }}">&raquo;</a>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

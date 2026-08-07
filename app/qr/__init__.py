@@ -1,15 +1,12 @@
 import secrets
-import hashlib
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from flask import Blueprint, send_file, abort, request, jsonify, current_app
-from app import db
-from app.models import QRCode, User
+from app import db, limiter
+from app.models import QRCode, ApiKey, TempToken
 from app.utils import generate_qr_image, generate_qr_svg
 
 qr_bp = Blueprint('qr', __name__)
-
-TEMP_TOKENS = {}
 
 
 def _resolve_logo_path(qr):
@@ -23,20 +20,23 @@ def _resolve_logo_path(qr):
 
 
 @qr_bp.route('/<slug>/download')
-def download_qr(slug, token=None):
+@limiter.limit(lambda: current_app.config.get('RATE_LIMIT_DOWNLOAD', '60/minute'))
+def download_qr(slug, token=None, fmt=None):
     qr = QRCode.query.filter_by(slug=slug, is_deleted=False).first()
     if not qr:
         abort(404)
     if not qr.is_active:
         abort(410)
 
-    fmt = request.args.get('format', 'png').lower()
+    fmt = (fmt or request.args.get('format', 'png')).lower()
     token = request.args.get('token')
     if token:
-        expected = TEMP_TOKENS.get(slug)
-        if not expected or expected != token:
+        # Token temporal en BD (multi-worker safe)
+        tok = TempToken.query.filter_by(slug=slug, token=token).first()
+        if not tok or not tok.is_valid:
             abort(401)
-        TEMP_TOKENS.pop(slug, None)
+        db.session.delete(tok)
+        db.session.commit()
 
     size = min(request.args.get('size', 400, type=int) or 400, 4096)
     logo_path = _resolve_logo_path(qr)
@@ -76,14 +76,10 @@ def download_qr_svg(slug):
 
 
 @qr_bp.route('/temp-token/<slug>')
+@limiter.limit(lambda: current_app.config.get('RATE_LIMIT_TEMP_TOKEN', '30/minute'))
 def get_temp_token(slug):
     auth = request.headers.get('Authorization', '').replace('Bearer ', '')
-    api_key_obj = None
-    from app.models import ApiKey
-    for ak in ApiKey.query.filter_by(is_active=True):
-        if ApiKey.hash_key(auth) == ak.key_hash:
-            api_key_obj = ak
-            break
+    api_key_obj = ApiKey.find_by_key(auth) if auth else None
     if not api_key_obj:
         abort(401)
 
@@ -93,8 +89,15 @@ def get_temp_token(slug):
 
     token = secrets.token_urlsafe(16)
     ttl = current_app.config.get('QR_TEMP_TOKEN_TTL', 300)
-    TEMP_TOKENS[slug] = token
-    from threading import Timer
-    Timer(ttl, lambda: TEMP_TOKENS.pop(slug, None)).start()
+    # Limpieza de tokens viejos del slug
+    TempToken.query.filter(
+        (TempToken.slug == slug) & (TempToken.expires_at < datetime.now(timezone.utc))
+    ).delete()
+    db.session.add(TempToken(
+        slug=slug,
+        token=token,
+        expires_at=datetime.now(timezone.utc) + timedelta(seconds=ttl),
+    ))
+    db.session.commit()
 
     return jsonify({'token': token, 'ttl': ttl})

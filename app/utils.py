@@ -818,3 +818,34 @@ def parse_device_info(user_agent_str):
     browser = ua.browser.family or 'unknown'
     os_name = ua.os.family or 'unknown'
     return device, browser, os_name
+
+
+# ─── Auditoria ───
+
+def log_audit(action, entity_type=None, entity_id=None, details=None):
+    """Registra una accion en el log de auditoria (nunca lanza excepciones)."""
+    try:
+        from flask import request as _req
+        from flask_login import current_user
+        from app import db
+        from app.models import AuditLog
+        ip = _req.headers.get('X-Forwarded-For', _req.remote_addr or '')
+        if ip and ',' in ip:
+            ip = ip.split(',')[0].strip()
+        entry = AuditLog(
+            user_id=current_user.id if current_user.is_authenticated else None,
+            username=current_user.username if current_user.is_authenticated else None,
+            action=action,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            details=(details or '')[:2000],
+            ip_address=ip[:45],
+        )
+        db.session.add(entry)
+        db.session.commit()
+    except Exception:
+        try:
+            from app import db
+            db.session.rollback()
+        except Exception:
+            pass
