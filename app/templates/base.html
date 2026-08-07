@@ -55,6 +55,7 @@
                 <div class="section-title">Administracion</div>
                 <a href="{{ url_for('admin.user_list') }}" class="{% if request.endpoint == 'admin.user_list' or request.endpoint == 'admin.user_create' or request.endpoint == 'admin.user_edit' %}active{% endif %}">
                     &#9679; Usuarios
+                    {% if pending_users_count > 0 %}<span class="badge badge-danger" style="float:right;">{{ pending_users_count }}</span>{% endif %}
                 </a>
             {% endif %}
         </nav>

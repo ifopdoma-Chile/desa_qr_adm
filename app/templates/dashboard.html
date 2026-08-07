@@ -8,6 +8,16 @@
     </div>
 </div>
 
+{% if pending_users_count > 0 %}
+<div class="alert alert-warning" style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;">
+    <div>
+        <strong>&#9888; {{ pending_users_count }} usuario(s) pendiente(s) de aprobaci&oacute;n.</strong>
+        <span class="text-muted">Revisa las solicitudes para que puedan ingresar al sistema.</span>
+    </div>
+    <a href="{{ url_for('admin.user_list') }}" class="btn btn-sm btn-primary">Revisar solicitudes</a>
+</div>
+{% endif %}
+
 <div class="stats-grid">
     <div class="stat-card">
         <div class="stat-value">{{ total_qrs }}</div>

@@ -55,10 +55,19 @@ def create_app(config_name='default'):
     # Template globals
     @app.context_processor
     def inject_globals():
+        pending = 0
+        try:
+            from flask_login import current_user
+            if current_user.is_authenticated and getattr(current_user, 'is_admin', False):
+                from app.models import User
+                pending = User.query.filter_by(is_approved=False).count()
+        except Exception:
+            pending = 0
         return dict(
             app_name=app.config.get('APP_NAME', 'QR Manager'),
             app_base_url=app.config.get('APP_BASE_URL', ''),
             current_year=__import__('datetime').datetime.now().year,
+            pending_users_count=pending,
         )
 
     # Register blueprints
