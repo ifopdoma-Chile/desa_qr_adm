@@ -162,6 +162,36 @@ class QRCode(db.Model):
         (OUTER_STAR, 'Estrella'),
     ]
 
+    GRADIENT_NONE = 'none'
+    GRADIENT_RADIAL = 'radial'
+    GRADIENT_VERTICAL = 'vertical'
+    GRADIENT_HORIZONTAL = 'horizontal'
+    GRADIENT_SQUARE = 'square'
+
+    QR_GRADIENTS = [
+        (GRADIENT_NONE, 'Sin gradiente'),
+        (GRADIENT_RADIAL, 'Radial'),
+        (GRADIENT_VERTICAL, 'Vertical'),
+        (GRADIENT_HORIZONTAL, 'Horizontal'),
+        (GRADIENT_SQUARE, 'Cuadrado'),
+    ]
+
+    STICKER_NONE = 'none'
+    STICKER_CLASSIC = 'classic'
+    STICKER_IFOP = 'ifop'
+    STICKER_CTA = 'cta'
+    STICKER_DOTS = 'dots'
+    STICKER_WAVE = 'wave'
+
+    QR_STICKERS = [
+        (STICKER_NONE, 'Sin marco'),
+        (STICKER_CLASSIC, 'Clasico (borde)'),
+        (STICKER_IFOP, 'IFOP institucional'),
+        (STICKER_CTA, 'CTA - Escanea aqui'),
+        (STICKER_DOTS, 'Puntos'),
+        (STICKER_WAVE, 'Ola marina'),
+    ]
+
     id = db.Column(db.Integer, primary_key=True)
     uid = db.Column(db.String(36), unique=True, nullable=False,
                     default=lambda: str(uuid.uuid4()), index=True)
@@ -212,6 +242,13 @@ class QRCode(db.Model):
     qr_fg_color = db.Column(db.String(7), nullable=False, default='#000000')
     qr_bg_color = db.Column(db.String(7), nullable=False, default='#ffffff')
     qr_outer_shape = db.Column(db.String(30), nullable=False, default='square')
+
+    # ── QR Styling avanzado (v2) ──
+    qr_gradient = db.Column(db.String(20), nullable=False, default='none')
+    qr_gradient_to = db.Column(db.String(7), nullable=False, default='#1954A2')
+    qr_sticker = db.Column(db.String(30), nullable=False, default='none')
+    logo_filename = db.Column(db.String(255))
+    qr_transparent_bg = db.Column(db.Boolean, default=False, nullable=False)
 
     # ── Status & lifecycle ──
     is_active = db.Column(db.Boolean, default=True, nullable=False)

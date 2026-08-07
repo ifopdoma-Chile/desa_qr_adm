@@ -13,8 +13,14 @@ from qrcode.image.styles.moduledrawers import (
     HorizontalBarsDrawer,
 )
 from qrcode.image.styles.moduledrawers.base import QRModuleDrawer as ModuleDrawer
-from qrcode.image.styles.colormasks import SolidFillColorMask
-from PIL import Image, ImageDraw
+from qrcode.image.styles.colormasks import (
+    SolidFillColorMask,
+    RadialGradiantColorMask,
+    VerticalGradiantColorMask,
+    HorizontalGradiantColorMask,
+    SquareGradiantColorMask,
+)
+from PIL import Image, ImageDraw, ImageFont
 from user_agents import parse as ua_parse
 from app.models import ConditionalRedirect
 
@@ -283,9 +289,34 @@ MODULE_DRAWERS = {
 }
 
 
+COLOR_MASKS = {
+    'none': SolidFillColorMask,
+    'radial': RadialGradiantColorMask,
+    'vertical': VerticalGradiantColorMask,
+    'horizontal': HorizontalGradiantColorMask,
+    'square': SquareGradiantColorMask,
+}
+
+
+def _build_color_mask(mask_name, fg, bg, gradient_to=None):
+    """Construye el colormask segun el tipo de gradiente."""
+    mask_name = mask_name or 'none'
+    if mask_name == 'radial':
+        return RadialGradiantColorMask(center_color=fg, edge_color=gradient_to or bg)
+    if mask_name == 'vertical':
+        return VerticalGradiantColorMask(top_color=fg, bottom_color=gradient_to or bg)
+    if mask_name == 'horizontal':
+        return HorizontalGradiantColorMask(left_color=fg, right_color=gradient_to or bg)
+    if mask_name == 'square':
+        return SquareGradiantColorMask(center_color=fg, edge_color=gradient_to or bg)
+    return SolidFillColorMask(front_color=fg, back_color=bg)
+
+
 def generate_qr_image(data, size=400, logo_path=None,
                       fill_color='#000000', back_color='#ffffff',
-                      style='square', outer_shape='square'):
+                      style='square', outer_shape='square',
+                      gradient='none', gradient_to='#1954A2',
+                      transparent_bg=False, sticker='none'):
     qr = qrcode.QRCode(
         version=None,
         error_correction=qrcode.constants.ERROR_CORRECT_H if logo_path else qrcode.constants.ERROR_CORRECT_M,
@@ -298,29 +329,166 @@ def generate_qr_image(data, size=400, logo_path=None,
     drawer_cls = MODULE_DRAWERS.get(style, SquareModuleDrawer)
     fg = _hex_to_rgb(fill_color)
     bg = _hex_to_rgb(back_color)
+    gradient_to_rgb = _hex_to_rgb(gradient_to) if gradient_to else bg
 
     img = qr.make_image(
         image_factory=StyledPilImage,
         module_drawer=drawer_cls(),
-        color_mask=SolidFillColorMask(back_color=bg, front_color=fg),
-    ).convert('RGB')
+        color_mask=_build_color_mask(gradient, fg, bg, gradient_to_rgb),
+    )
+
+    if transparent_bg:
+        img = img.convert('RGBA')
+        data_img = img.getdata()
+        new_data = []
+        for item in data_img:
+            if item[0] == bg[0] and item[1] == bg[1] and item[2] == bg[2]:
+                new_data.append((bg[0], bg[1], bg[2], 0))
+            else:
+                new_data.append(item)
+        img.putdata(new_data)
+    else:
+        img = img.convert('RGB')
 
     if logo_path:
         try:
             logo = Image.open(logo_path)
+            if logo.mode in ('RGBA', 'LA') or (logo.mode == 'P' and 'transparency' in logo.info):
+                logo = logo.convert('RGBA')
+            else:
+                logo = logo.convert('RGB')
             logo_max = int(size * 0.25)
             logo.thumbnail((logo_max, logo_max), Image.LANCZOS)
             pos = ((img.width - logo.width) // 2, (img.height - logo.height) // 2)
-            img.paste(logo, pos)
+            if img.mode == 'RGBA':
+                img.paste(logo, pos, logo)
+            else:
+                img.paste(logo, pos)
         except Exception:
             pass
 
     img = apply_outer_shape(img, outer_shape, size)
 
+    if sticker and sticker != 'none':
+        img = apply_sticker(img, sticker, size, fill_color, back_color, logo_path)
+
     output = io.BytesIO()
     img.save(output, format='PNG', quality=95)
     output.seek(0)
     return output
+
+
+# ─── Stickers / Marcos ───
+
+def _load_font(size_px):
+    candidates = [
+        '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+        '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
+        '/usr/share/fonts/truetype/ubuntu/Ubuntu-B.ttf',
+    ]
+    for path in candidates:
+        try:
+            return ImageFont.truetype(path, size_px)
+        except Exception:
+            continue
+    return ImageFont.load_default()
+
+
+def apply_sticker(img, sticker, size, fg_hex='#000000', bg_hex='#ffffff', logo_path=None):
+    """Agrega un marco/sticker alrededor del QR (estilo qrcodechimp)."""
+    fg = _hex_to_rgb(fg_hex)
+    bg = _hex_to_rgb(bg_hex)
+    base = img if img.mode == 'RGBA' else img.convert('RGBA')
+    qr_w, qr_h = base.size
+
+    if sticker == 'classic':
+        pad = max(qr_w // 8, 24)
+        canvas = Image.new('RGBA', (qr_w + pad * 2, qr_h + pad * 2), (*bg, 255))
+        canvas.paste(base, (pad, pad))
+        d = ImageDraw.Draw(canvas)
+        r = pad // 2
+        d.rounded_rectangle([0, 0, canvas.width - 1, canvas.height - 1], radius=r,
+                            outline=(*fg, 255), width=max(qr_w // 60, 4))
+        return canvas
+
+    if sticker == 'dots':
+        pad = max(qr_w // 8, 24)
+        canvas = Image.new('RGBA', (qr_w + pad * 2, qr_h + pad * 2), (*bg, 255))
+        canvas.paste(base, (pad, pad))
+        d = ImageDraw.Draw(canvas)
+        dot_r = max(qr_w // 50, 3)
+        step = max(qr_w // 18, 10)
+        for x in range(pad // 2, canvas.width - pad // 2, step):
+            d.ellipse([x - dot_r, pad // 3 - dot_r, x + dot_r, pad // 3 + dot_r], fill=(*fg, 255))
+            d.ellipse([x - dot_r, canvas.height - pad // 3 - dot_r, x + dot_r, canvas.height - pad // 3 + dot_r], fill=(*fg, 255))
+        for y in range(pad // 2, canvas.height - pad // 2, step):
+            d.ellipse([pad // 3 - dot_r, y - dot_r, pad // 3 + dot_r, y + dot_r], fill=(*fg, 255))
+            d.ellipse([canvas.width - pad // 3 - dot_r, y - dot_r, canvas.width - pad // 3 + dot_r, y + dot_r], fill=(*fg, 255))
+        return canvas
+
+    if sticker == 'cta':
+        pad = max(qr_w // 10, 24)
+        banner_h = max(qr_h // 6, 48)
+        canvas = Image.new('RGBA', (qr_w + pad * 2, qr_h + pad * 2 + banner_h), (*bg, 255))
+        canvas.paste(base, (pad, pad))
+        d = ImageDraw.Draw(canvas)
+        d.rectangle([0, canvas.height - banner_h, canvas.width, canvas.height], fill=(*fg, 255))
+        font = _load_font(max(banner_h // 2, 18))
+        text = 'ESCANEA AQUI'
+        bbox = d.textbbox((0, 0), text, font=font)
+        tw = bbox[2] - bbox[0]
+        th = bbox[3] - bbox[1]
+        d.text(((canvas.width - tw) // 2, canvas.height - banner_h + (banner_h - th) // 2 - bbox[1]),
+               text, fill=(*bg, 255), font=font)
+        return canvas
+
+    if sticker == 'ifop':
+        pad = max(qr_w // 10, 24)
+        banner_h = max(qr_h // 7, 56)
+        canvas = Image.new('RGBA', (qr_w + pad * 2, qr_h + pad * 2 + banner_h), (*bg, 255))
+        canvas.paste(base, (pad, pad))
+        d = ImageDraw.Draw(canvas)
+        azul_ifop = (25, 84, 162)  # #1954A2
+        d.rectangle([0, 0, canvas.width, banner_h], fill=azul_ifop)
+        d.rectangle([0, canvas.height - banner_h // 3, canvas.width, canvas.height], fill=azul_ifop)
+        # Logo central en la franja superior si existe
+        if logo_path:
+            try:
+                l = Image.open(logo_path).convert('RGBA')
+                l.thumbnail((banner_h * 3, banner_h - 8), Image.LANCZOS)
+                canvas.paste(l, ((canvas.width - l.width) // 2, (banner_h - l.height) // 2), l)
+            except Exception:
+                pass
+        else:
+            font = _load_font(max(banner_h // 3, 16))
+            text = 'IFOP'
+            bbox = d.textbbox((0, 0), text, font=font)
+            tw = bbox[2] - bbox[0]
+            th = bbox[3] - bbox[1]
+            d.text(((canvas.width - tw) // 2, (banner_h - th) // 2 - bbox[1]),
+                   text, fill=(255, 255, 255, 255), font=font)
+        return canvas
+
+    if sticker == 'wave':
+        pad = max(qr_w // 8, 24)
+        banner_h = max(qr_h // 8, 44)
+        canvas = Image.new('RGBA', (qr_w + pad * 2, qr_h + pad * 2 + banner_h), (*bg, 255))
+        canvas.paste(base, (pad, pad))
+        d = ImageDraw.Draw(canvas)
+        azul = (25, 84, 162)
+        celeste = (120, 180, 220)
+        # olas superiores
+        for i, (col, y0) in enumerate([(celeste, 0), (azul, banner_h // 2)]):
+            pts = []
+            w = canvas.width
+            for x in range(0, w + 1, max(w // 40, 4)):
+                yy = y0 + banner_h // 4 + int(8 * math.sin(x * math.pi * 2 / (w / 2.0)))
+                pts.append((x, yy))
+            pts += [(w, y0 + banner_h), (0, y0 + banner_h)]
+            d.polygon(pts, fill=col)
+        return canvas
+
+    return base
 
 
 def generate_qr_svg(data, fill_color='#000000', back_color='#ffffff'):

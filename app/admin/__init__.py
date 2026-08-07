@@ -1,5 +1,6 @@
 import csv
 import io
+import os
 import secrets
 from datetime import datetime, timezone
 from flask import (
@@ -8,6 +9,7 @@ from flask import (
 )
 from flask_login import login_required, current_user
 from sqlalchemy import func
+from werkzeug.utils import secure_filename
 from app import db
 from app.models import User, QRCode, Tag, Domain, ApiKey, ScanLog, ConditionalRedirect
 from app.utils import generate_qr_image, generate_qr_svg
@@ -145,7 +147,9 @@ def qr_create():
 
     return render_template('qr_form.html', qr=None, tags=tags, domains=domains,
                          qr_types=QRCode.QR_TYPES, qr_styles=QRCode.QR_STYLES,
-                         qr_outer_shapes=QRCode.QR_OUTER_SHAPES)
+                         qr_outer_shapes=QRCode.QR_OUTER_SHAPES,
+                         qr_gradients=QRCode.QR_GRADIENTS,
+                         qr_stickers=QRCode.QR_STICKERS)
 
 
 @admin_bp.route('/qr/<int:qr_id>')
@@ -189,7 +193,39 @@ def qr_edit(qr_id):
 
     return render_template('qr_form.html', qr=qr, tags=tags, domains=domains,
                          qr_types=QRCode.QR_TYPES, qr_styles=QRCode.QR_STYLES,
-                         qr_outer_shapes=QRCode.QR_OUTER_SHAPES)
+                         qr_outer_shapes=QRCode.QR_OUTER_SHAPES,
+                         qr_gradients=QRCode.QR_GRADIENTS,
+                         qr_stickers=QRCode.QR_STICKERS)
+
+
+@admin_bp.route('/qr/preview')
+@login_required
+def qr_preview():
+    """Genera un PNG de preview en vivo con los parametros del formulario."""
+    data = request.args.get('data', 'https://siom.ifop.cl/')
+    size = min(request.args.get('size', 300, type=int) or 300, 1024)
+    style = request.args.get('style', 'square')
+    outer_shape = request.args.get('outer_shape', 'square')
+    fg = request.args.get('fg', '#000000')
+    bg = request.args.get('bg', '#ffffff')
+    gradient = request.args.get('gradient', 'none')
+    gradient_to = request.args.get('gradient_to', '#1954A2')
+    sticker = request.args.get('sticker', 'none')
+    transparent = request.args.get('transparent', '0') == '1'
+    logo = request.args.get('logo', '')
+
+    logo_path = None
+    if logo:
+        logo_path = os.path.join(current_app.root_path, 'static', 'uploads', os.path.basename(logo))
+        if not os.path.exists(logo_path):
+            logo_path = None
+
+    output = generate_qr_image(data, size=size, logo_path=logo_path,
+                               fill_color=fg, back_color=bg,
+                               style=style, outer_shape=outer_shape,
+                               gradient=gradient, gradient_to=gradient_to,
+                               transparent_bg=transparent, sticker=sticker)
+    return send_file(output, mimetype='image/png')
 
 
 @admin_bp.route('/qr/<int:qr_id>/toggle', methods=['POST'])
@@ -611,6 +647,24 @@ def _populate_qr_from_form(qr):
     qr.qr_fg_color = request.form.get('qr_fg_color', '#000000')
     qr.qr_bg_color = request.form.get('qr_bg_color', '#ffffff')
     qr.qr_outer_shape = request.form.get('qr_outer_shape', 'square')
+    qr.qr_gradient = request.form.get('qr_gradient', 'none')
+    qr.qr_gradient_to = request.form.get('qr_gradient_to', '#1954A2')
+    qr.qr_sticker = request.form.get('qr_sticker', 'none')
+    qr.qr_transparent_bg = request.form.get('qr_transparent_bg') == 'on'
+
+    # Logo upload
+    logo_file = request.files.get('logo')
+    if logo_file and logo_file.filename:
+        ext = os.path.splitext(logo_file.filename)[1].lower()
+        if ext in ('.png', '.jpg', '.jpeg', '.webp', '.gif'):
+            import uuid
+            filename = f"{uuid.uuid4().hex}{ext}"
+            upload_dir = os.path.join(current_app.root_path, 'static', 'uploads')
+            os.makedirs(upload_dir, exist_ok=True)
+            logo_file.save(os.path.join(upload_dir, filename))
+            qr.logo_filename = filename
+    elif request.form.get('remove_logo') == 'on':
+        qr.logo_filename = None
 
     tag_ids = request.form.getlist('tags')
     qr.tags = []
