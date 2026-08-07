@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Webhooks - {{ app_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Webhooks de escaneo</h1>
+</div>
+
+<p style="opacity:.75; max-width: 720px;">
+    Los webhooks reciben un <code>POST</code> con JSON por <strong>cada escaneo</strong> de un QR.
+    Ideal para integrar el sistema con dashboards, Telegram, planillas o cualquier servicio
+    que exponga una URL. Ejemplo del payload:
+</p>
+<pre style="background:#0d1117;color:#c9d1d9;padding:1rem;border-radius:8px;font-size:.8rem;overflow:auto;max-width:720px;">{
+  "event": "scan",
+  "qr":   { "id": 1, "slug": "abc123", "title": "Mi QR", "url": "https://..." },
+  "scan": { "id": 42, "scanned_at": "2026-08-07T14:00:00+00:00", "ip": "1.2.3.4",
+            "device": "mobile", "browser": "Chrome", "os": "Android",
+            "country": "Chile", "city": "Valparaiso",
+            "latitude": -33.04, "longitude": -71.62 }
+}</pre>
+
+<div class="card" style="margin-bottom:1.5rem;">
+    <form method="POST" action="{{ url_for('admin.webhook_create') }}" style="display:flex; gap:.5rem; padding:1rem; flex-wrap:wrap;">
+        <input type="url" name="url" placeholder="https://ejemplo.cl/hook" required style="flex:2; min-width:260px;" value="{{ request.args.get('url', '') }}">
+        <input type="text" name="description" placeholder="Descripcion (opcional)" style="flex:1; min-width:180px;">
+        <button type="submit" class="btn btn-primary">+ Agregar webhook</button>
+    </form>
+</div>
+
+<div class="card">
+    <div class="table-container">
+        <table>
+            <thead><tr><th>URL</th><th>Descripcion</th><th>Estado</th><th>Ultima entrega</th><th>Fallos</th><th>Acciones</th></tr></thead>
+            <tbody>
+                {% for wh in webhooks %}
+                <tr>
+                    <td><code>{{ wh.url }}</code></td>
+                    <td>{{ wh.description or '-' }}</td>
+                    <td>
+                        {% if wh.is_active %}
+                            <span class="badge badge-success">Activo</span>
+                        {% else %}
+                            <span class="badge badge-secondary">Desactivado</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if wh.last_triggered_at %}
+                            {{ wh.last_triggered_at|localtime }}
+                            {% if wh.last_status %}<br><span class="badge {% if wh.last_status < 400 %}badge-success{% else %}badge-danger{% endif %}">HTTP {{ wh.last_status }}</span>{% endif %}
+                            {% if wh.last_error %}<br><small style="color:#b91c1c;">{{ wh.last_error[:120] }}</small>{% endif %}
+                        {% else %}-{% endif %}
+                    </td>
+                    <td>{% if wh.failures %}<span class="badge badge-danger">{{ wh.failures }}</span>{% else %}<span class="badge badge-success">0</span>{% endif %}</td>
+                    <td class="actions">
+                        <form method="POST" action="{{ url_for('admin.webhook_test', wh_id=wh.id) }}" style="display:inline;">
+                            <button type="submit" class="btn btn-sm btn-outline">Probar</button>
+                        </form>
+                        <form method="POST" action="{{ url_for('admin.webhook_toggle', wh_id=wh.id) }}" style="display:inline;">
+                            <button type="submit" class="btn btn-sm {% if wh.is_active %}btn-warning{% else %}btn-success{% endif %}">{{ 'Desactivar' if wh.is_active else 'Activar' }}</button>
+                        </form>
+                        <form method="POST" action="{{ url_for('admin.webhook_delete', wh_id=wh.id) }}" style="display:inline;"
+                              onsubmit="return confirm('Eliminar este webhook?');">
+                            <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" style="text-align:center; opacity:.6; padding:2rem;">Sin webhooks configurados.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

@@ -3,6 +3,7 @@ import io
 import os
 import re
 import secrets
+import requests
 from datetime import datetime, timezone
 from flask import (
     Blueprint, render_template, redirect, url_for, flash, request,
@@ -12,7 +13,7 @@ from flask_login import login_required, current_user
 from sqlalchemy import func
 from werkzeug.utils import secure_filename
 from app import db
-from app.models import User, QRCode, Tag, Domain, ApiKey, ScanLog, ConditionalRedirect, AuditLog
+from app.models import User, QRCode, Tag, Domain, ApiKey, ScanLog, ConditionalRedirect, AuditLog, Webhook
 from app.utils import generate_qr_image, generate_qr_svg, log_audit
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
@@ -395,8 +396,20 @@ def tag_delete(tag_id):
 @admin_bp.route('/usuarios')
 @admin_required
 def user_list():
-    users = User.query.order_by(User.username).all()
-    return render_template('users.html', users=users)
+    # Busqueda + paginacion (20 por pagina)
+    q = (request.args.get('q') or '').strip()
+    page = request.args.get('page', 1, type=int)
+    per_page = 20
+    query = User.query
+    if q:
+        like = f'%{q}%'
+        query = query.filter(db.or_(
+            User.username.ilike(like),
+            User.email.ilike(like),
+            User.full_name.ilike(like),
+        ))
+    users_p = query.order_by(User.username).paginate(page=page, per_page=per_page, error_out=False)
+    return render_template('users.html', users=users_p.items, pagination=users_p, q=q)
 
 
 @admin_bp.route('/usuarios/nuevo', methods=['GET', 'POST'])
@@ -882,12 +895,60 @@ def analytics():
 
     total_scans = base_scans.count()
 
+    # Serie por dia alineada al rango [since, hoy] (para grafico comparativo)
+    since_date = since.date() if hasattr(since, 'date') else since
+    day_series_full = [0] * days
+    for r in by_day:
+        rd = r.day.date() if hasattr(r.day, 'date') else r.day
+        idx = (rd - since_date).days if rd else None
+        if idx is not None and 0 <= idx < days:
+            day_series_full[idx] = r.count
+    day_labels_full = [str((since_date + __import__('datetime').timedelta(days=i)).isoformat()) for i in range(days)]
+
+    # ── Comparativa con el periodo anterior (misma duracion) ──
+    compare = request.args.get('compare') == '1'
+    prev_total = prev_by_day = prev_delta_pct = prev_day_series = None
+    if compare:
+        prev_since = since - __import__('datetime').timedelta(days=days)
+        prev_base = ScanLog.query.join(QRCode).filter(
+            QRCode.is_deleted == False,
+            ScanLog.scanned_at >= prev_since,
+            ScanLog.scanned_at < since,
+        )
+        if not current_user.is_admin:
+            prev_base = prev_base.filter(QRCode.user_id == current_user.id)
+        prev_total = prev_base.count()
+        if prev_total:
+            prev_delta_pct = round((total_scans - prev_total) / prev_total * 100, 1)
+        else:
+            prev_delta_pct = 100.0 if total_scans else 0.0
+
+        prev_day_q = db.session.query(
+            func.date_trunc('day', func.timezone('America/Santiago', ScanLog.scanned_at)).label('day'),
+            func.count(ScanLog.id).label('count')
+        ).join(QRCode).filter(
+            QRCode.is_deleted == False,
+            ScanLog.scanned_at >= prev_since,
+            ScanLog.scanned_at < since,
+        )
+        if not current_user.is_admin:
+            prev_day_q = prev_day_q.filter(QRCode.user_id == current_user.id)
+        prev_day_q = prev_day_q.group_by('day').order_by('day').all()
+        prev_day_series = [0] * days
+        for r in prev_day_q:
+            rd = r.day.date() if hasattr(r.day, 'date') else r.day
+            idx = (rd - since_date).days + days if rd else None
+            if idx is not None and 0 <= idx < days:
+                prev_day_series[idx] = r.c
+
     return render_template('analytics.html',
                          days=days, total_scans=total_scans,
-                         by_day=by_day,
+                         by_day=by_day, day_series_full=day_series_full, day_labels_full=day_labels_full,
                          by_device=by_device, by_os=by_os, by_browser=by_browser,
                          by_hour_series=by_hour_series,
-                         top_qrs=top_qrs, map_scans=map_scans)
+                         top_qrs=top_qrs, map_scans=map_scans,
+                         compare=compare, prev_total=prev_total,
+                         prev_delta_pct=prev_delta_pct, prev_day_series=prev_day_series)
 
 
 # ─── Auditoria (solo admin) ───
@@ -955,3 +1016,71 @@ def qr_scans_export(qr_id):
         mimetype='text/csv',
         headers={'Content-Disposition': f'attachment;filename=scans_{qr.slug}.csv'}
     )
+
+
+# ─── Webhooks (solo admin) ───
+
+@admin_bp.route('/webhooks')
+@admin_required
+def webhook_list():
+    webhooks = Webhook.query.order_by(Webhook.id.desc()).all()
+    return render_template('webhooks.html', webhooks=webhooks)
+
+
+@admin_bp.route('/webhooks/nuevo', methods=['POST'])
+@admin_required
+def webhook_create():
+    url = (request.form.get('url') or '').strip()
+    desc = (request.form.get('description') or '').strip()
+    if not url.startswith(('http://', 'https://')):
+        flash('URL de webhook invalida (debe empezar con http:// o https://).', 'danger')
+        return redirect(url_for('admin.webhook_list'))
+    wh = Webhook(url=url, description=desc or None, is_active=True)
+    db.session.add(wh)
+    db.session.commit()
+    log_audit('create_webhook', 'webhook', wh.id, f'url={url}')
+    flash('Webhook creado. Recibira un POST por cada escaneo.', 'success')
+    return redirect(url_for('admin.webhook_list'))
+
+
+@admin_bp.route('/webhooks/<int:wh_id>/toggle', methods=['POST'])
+@admin_required
+def webhook_toggle(wh_id):
+    wh = Webhook.query.get_or_404(wh_id)
+    wh.is_active = not wh.is_active
+    db.session.commit()
+    log_audit('toggle_webhook', 'webhook', wh.id, f'active={wh.is_active}')
+    flash('Webhook {}'.format('activado' if wh.is_active else 'desactivado'), 'success')
+    return redirect(url_for('admin.webhook_list'))
+
+
+@admin_bp.route('/webhooks/<int:wh_id>/test', methods=['POST'])
+@admin_required
+def webhook_test(wh_id):
+    wh = Webhook.query.get_or_404(wh_id)
+    try:
+        r = requests.post(wh.url, json={'event': 'test', 'message': 'Prueba de webhook desde QR Admin'},
+                          timeout=5)
+        wh.last_status = r.status_code
+        wh.last_error = None if r.status_code < 400 else r.text[:250]
+        wh.failures = 0
+        flash(f'Webhook respondio HTTP {r.status_code}.', 'success' if r.status_code < 400 else 'danger')
+    except Exception as e:
+        wh.last_status = 0
+        wh.last_error = str(e)[:250]
+        wh.failures = (wh.failures or 0) + 1
+        flash(f'Error al enviar: {e}', 'danger')
+    wh.last_triggered_at = datetime.now(timezone.utc)
+    db.session.commit()
+    return redirect(url_for('admin.webhook_list'))
+
+
+@admin_bp.route('/webhooks/<int:wh_id>/eliminar', methods=['POST'])
+@admin_required
+def webhook_delete(wh_id):
+    wh = Webhook.query.get_or_404(wh_id)
+    db.session.delete(wh)
+    db.session.commit()
+    log_audit('delete_webhook', 'webhook', wh.id, f'url={wh.url}')
+    flash('Webhook eliminado.', 'success')
+    return redirect(url_for('admin.webhook_list'))

@@ -499,6 +499,25 @@ class AuditLog(db.Model):
         return f'<AuditLog {self.action} by {self.username} at {self.created_at}>'
 
 
+# ─── Webhook ───
+class Webhook(db.Model):
+    __tablename__ = 'webhooks'
+
+    id = db.Column(db.Integer, primary_key=True)
+    url = db.Column(db.String(500), nullable=False)
+    description = db.Column(db.String(200))
+    events = db.Column(db.String(200), default='scan')  # csv: scan, qr_created, ...
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    last_triggered_at = db.Column(db.DateTime(timezone=True))
+    last_status = db.Column(db.Integer)          # codigo HTTP de la ultima entrega
+    last_error = db.Column(db.String(300))       # error de la ultima entrega
+    failures = db.Column(db.Integer, default=0)  # fallos consecutivos
+
+    def __repr__(self):
+        return f'<Webhook {self.id} {self.url}>'
+
+
 # ─── API Key ───
 class ApiKey(db.Model):
     __tablename__ = 'api_keys'

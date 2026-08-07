@@ -16,18 +16,27 @@
 {% block content %}
 <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
     <h2 style="margin:0;">📊 Analytics</h2>
-    <div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;">
         <a href="{{ url_for('admin.analytics', days=7) }}" class="btn btn-sm {{ 'btn-primary' if days==7 else 'btn-outline' }}">7 días</a>
         <a href="{{ url_for('admin.analytics', days=30) }}" class="btn btn-sm {{ 'btn-primary' if days==30 else 'btn-outline' }}">30 días</a>
         <a href="{{ url_for('admin.analytics', days=90) }}" class="btn btn-sm {{ 'btn-primary' if days==90 else 'btn-outline' }}">90 días</a>
         <a href="{{ url_for('admin.analytics', days=365) }}" class="btn btn-sm {{ 'btn-primary' if days==365 else 'btn-outline' }}">1 año</a>
+        {% if compare %}
+            <a href="{{ url_for('admin.analytics', days=days) }}" class="btn btn-sm btn-outline">✕ Sin comparar</a>
+        {% else %}
+            <a href="{{ url_for('admin.analytics', days=days, compare=1) }}" class="btn btn-sm btn-outline">⇄ Comparar con período anterior</a>
+        {% endif %}
     </div>
 </div>
 
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:16px;">
     <div class="chart-card" style="text-align:center;">
-        <div class="stat-big">{{ total_scans }}</div>
-        <div class="stat-label">Escaneos en {{ days }} días</div>
+        <div class="stat-big">{{ total_scans }}
+            {% if compare and prev_delta_pct is not none %}
+                <span class="badge {% if prev_delta_pct >= 0 %}badge-success{% else %}badge-danger{% endif %}" style="font-size:.9rem;">{{ '%+.1f'|format(prev_delta_pct) }}%</span>
+            {% endif %}
+        </div>
+        <div class="stat-label">Escaneos en {{ days }} días{% if compare %} <small>(vs {{ prev_total or 0 }} anteriores)</small>{% endif %}</div>
     </div>
     <div class="chart-card" style="text-align:center;">
         <div class="stat-big">{{ map_scans|length }}</div>
@@ -116,10 +125,27 @@
 
     var PALETTE = ['#1954A2', '#2c6b9e', '#4a90d9', '#7cb3e8', '#a9c9ee', '#5b8db8', '#8fb5d6', '#c3d8ec', '#d64545', '#e8a33d'];
 
-    // Por dia
+    // Por dia (con comparativa: barra azul = actual, gris = periodo anterior)
     var dayLabels = [{% for r in by_day %}"{{ r.day.isoformat() if r.day else '' }}"{% if not loop.last %},{% endif %}{% endfor %}];
     var dayValues = [{% for r in by_day %}{{ r.count }}{% if not loop.last %},{% endif %}{% endfor %}];
-    if (dayLabels.length) bar('chDay', dayLabels, dayValues);
+    {% if compare and prev_day_series %}
+        new Chart(document.getElementById('chDay'), {
+            type: 'bar',
+            data: {
+                labels: [{% for l in day_labels_full %}"{{ l }}"{% if not loop.last %},{% endif %}{% endfor %}],
+                datasets: [
+                    { data: [{{ day_series_full|join(',') }}], backgroundColor: '#1954A2', borderRadius: 4, label: 'Actual' },
+                    { data: [{{ prev_day_series|join(',') }}], backgroundColor: 'rgba(108,117,125,0.35)', borderRadius: 4, label: 'Anterior' }
+                ]
+            },
+            options: {
+                plugins: { legend: { position: 'top' } },
+                scales: { y: { beginAtZero: true } }
+            }
+        });
+    {% elif by_day %}
+        bar('chDay', dayLabels, dayValues);
+    {% endif %}
 
     // Por hora
     bar('chHour', ['0','1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17','18','19','20','21','22','23'],

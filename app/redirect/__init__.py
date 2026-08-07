@@ -1,13 +1,75 @@
+import threading
+
 import requests
 from flask import Blueprint, redirect, request, abort, render_template, current_app
 from datetime import datetime, timezone
 from app import db, limiter
-from app.models import QRCode, ScanLog, Domain
+from app.models import QRCode, ScanLog, Domain, Webhook
 from app.utils import detect_proxy, parse_device_info, detect_conditional_redirect
 
 redirect_bp = Blueprint('redirect', __name__)
 
 GEO_CACHE = {}
+
+
+def _fire_scan_webhooks(qr, scan):
+    """Dispara webhooks de escaneo en segundo plano (sin bloquear el redirect)."""
+    try:
+        webhooks = Webhook.query.filter_by(is_active=True).all()
+    except Exception:
+        return
+    if not webhooks:
+        return
+    app = current_app._get_current_object()
+
+    payload = {
+        'event': 'scan',
+        'qr': {
+            'id': qr.id,
+            'slug': qr.slug,
+            'title': qr.title,
+            'url': qr.get_qr_data(),
+        },
+        'scan': {
+            'id': scan.id,
+            'scanned_at': scan.scanned_at.isoformat() if scan.scanned_at else None,
+            'ip': scan.ip_address,
+            'device': scan.device_type,
+            'browser': scan.browser,
+            'os': scan.os_name,
+            'country': scan.country,
+            'city': scan.city,
+            'latitude': scan.latitude,
+            'longitude': scan.longitude,
+        },
+    }
+
+    def _deliver(wh_id, url, data):
+        try:
+            r = requests.post(url, json=data, timeout=5)
+            status = r.status_code
+            err = None if r.status_code < 400 else r.text[:250]
+        except Exception as e:
+            status, err = 0, str(e)[:250]
+        try:
+            with app.app_context():
+                wh = db.session.get(Webhook, wh_id)
+                if wh:
+                    wh.last_status = status
+                    wh.last_error = err
+                    wh.last_triggered_at = datetime.now(timezone.utc)
+                    if status and status < 400:
+                        wh.failures = 0
+                    else:
+                        wh.failures = (wh.failures or 0) + 1
+                    db.session.commit()
+        except Exception:
+            pass
+
+    for wh in webhooks:
+        t = threading.Thread(target=_deliver, args=(wh.id, wh.url, payload), daemon=True)
+        t.start()
+
 
 # Hosts propios de la app (la app vive bajo sapogis.ifop.cl/qr/)
 APP_HOSTS = {
@@ -122,6 +184,9 @@ def handle_redirect(slug):
     qr.scan_count = (qr.scan_count or 0) + 1
     db.session.add(scan)
     db.session.commit()
+    db.session.refresh(scan)
+
+    _fire_scan_webhooks(qr, scan)
 
     if qr.qr_type in (QRCode.TYPE_TEXT, QRCode.TYPE_JSON):
         return render_template('show_content.html', qr=qr, data=target_url)

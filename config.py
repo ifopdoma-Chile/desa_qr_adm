@@ -34,7 +34,8 @@ class Config:
     QR_MAX_PER_USER = 500
     RATE_LIMIT_DEFAULT = '200/hour'
     RATE_LIMIT_SCAN = '60/minute'
-    RATE_LIMIT_LOGIN = '10/minute'
+    RATE_LIMIT_LOGIN = '10/minute'      # intentos POST de login
+    RATE_LIMIT_LOGIN_GET = '60/minute'  # ver la pagina de login
     RATE_LIMIT_TEMP_TOKEN = '30/minute'
     RATE_LIMIT_DOWNLOAD = '60/minute'
     RATELIMIT_STORAGE_URL = os.environ.get('RATELIMIT_STORAGE_URL', 'memory://')

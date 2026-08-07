@@ -39,7 +39,9 @@ def init_oauth(app):
 
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
-@limiter.limit(lambda: current_app.config.get('RATE_LIMIT_LOGIN', '10/minute'))
+# Limites por metodo: ver pagina es barato (60/min), intentos de login van a 10/min.
+@limiter.limit(lambda: current_app.config.get('RATE_LIMIT_LOGIN_GET', '60/minute'), methods=['GET'])
+@limiter.limit(lambda: current_app.config.get('RATE_LIMIT_LOGIN', '10/minute'), methods=['POST'])
 def login():
     if current_user.is_authenticated:
         return redirect(url_for('admin.dashboard'))

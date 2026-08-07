@@ -8,6 +8,12 @@
     </div>
 </div>
 
+<form method="GET" action="{{ url_for('admin.user_list') }}" class="search-bar" style="margin-bottom: 1rem; display:flex; gap:.5rem;">
+    <input type="text" name="q" value="{{ q }}" placeholder="Buscar por usuario, nombre o email..." style="flex:1;">
+    <button type="submit" class="btn btn-outline">Buscar</button>
+    {% if q %}<a href="{{ url_for('admin.user_list') }}" class="btn btn-outline">Limpiar</a>{% endif %}
+</form>
+
 <div class="card">
     <div class="table-container">
         <table>
@@ -58,5 +64,16 @@
             </tbody>
         </table>
     </div>
+    {% if pagination and pagination.pages > 1 %}
+    <div class="pagination" style="padding: .75rem 1rem; display:flex; gap:.5rem; align-items:center;">
+        {% if pagination.has_prev %}
+            <a class="btn btn-sm btn-outline" href="{{ url_for('admin.user_list', q=q, page=pagination.prev_num) }}">&laquo; Anterior</a>
+        {% endif %}
+        <span style="opacity:.7;">Pagina {{ pagination.page }} de {{ pagination.pages }} ({{ pagination.total }} usuarios)</span>
+        {% if pagination.has_next %}
+            <a class="btn btn-sm btn-outline" href="{{ url_for('admin.user_list', q=q, page=pagination.next_num) }}">Siguiente &raquo;</a>
+        {% endif %}
+    </div>
+    {% endif %}
 </div>
 {% endblock %}
