@@ -135,7 +135,7 @@ def qr_list():
 
 
 @admin_bp.route('/qr/nuevo', methods=['GET', 'POST'])
-@editor_required
+@login_required
 def qr_create():
     if current_user.qr_count >= current_app.config.get('QR_MAX_PER_USER', 500) and not current_user.is_admin:
         flash(f'Has alcanzado el limite de {current_app.config.get("QR_MAX_PER_USER")} QR.', 'warning')
@@ -186,7 +186,7 @@ def qr_detail(qr_id):
 
 
 @admin_bp.route('/qr/<int:qr_id>/enviar-email', methods=['POST'])
-@editor_required
+@login_required
 def qr_send_email(qr_id):
     """Envia el QR por correo electronico al dueno del QR (o al usuario actual)."""
     qr = QRCode.query.get_or_404(qr_id)
@@ -207,7 +207,7 @@ def qr_send_email(qr_id):
 
 
 @admin_bp.route('/qr/<int:qr_id>/editar', methods=['GET', 'POST'])
-@editor_required
+@login_required
 def qr_edit(qr_id):
     qr = QRCode.query.get_or_404(qr_id)
     _check_owner(qr)
@@ -260,7 +260,7 @@ def qr_preview():
 
 
 @admin_bp.route('/qr/<int:qr_id>/toggle', methods=['POST'])
-@editor_required
+@login_required
 def qr_toggle(qr_id):
     qr = QRCode.query.get_or_404(qr_id)
     _check_owner(qr)
@@ -273,7 +273,7 @@ def qr_toggle(qr_id):
 
 
 @admin_bp.route('/qr/<int:qr_id>/delete', methods=['POST'])
-@editor_required
+@login_required
 def qr_delete(qr_id):
     qr = QRCode.query.get_or_404(qr_id)
     _check_owner(qr)
@@ -285,7 +285,7 @@ def qr_delete(qr_id):
 
 
 @admin_bp.route('/qr/<int:qr_id>/restore', methods=['POST'])
-@editor_required
+@login_required
 def qr_restore(qr_id):
     qr = QRCode.query.get_or_404(qr_id)
     _check_owner(qr)
@@ -297,7 +297,7 @@ def qr_restore(qr_id):
 
 
 @admin_bp.route('/qr/<int:qr_id>/destroy', methods=['POST'])
-@admin_required
+@login_required
 def qr_destroy(qr_id):
     qr = QRCode.query.get_or_404(qr_id)
     _check_owner(qr)
@@ -319,7 +319,7 @@ def qr_trash():
 
 
 @admin_bp.route('/papelera/vaciar', methods=['POST'])
-@admin_required
+@login_required
 def qr_trash_empty():
     qrs = get_trashed_qrs().all()
     for qr in qrs:
@@ -343,7 +343,7 @@ def tag_list():
 
 
 @admin_bp.route('/tags/nuevo', methods=['POST'])
-@editor_required
+@login_required
 def tag_create():
     name = request.form.get('name', '').strip()
     color = request.form.get('color', '#2c6b9e')
@@ -363,7 +363,7 @@ def tag_create():
 
 
 @admin_bp.route('/tags/<int:tag_id>/editar', methods=['POST'])
-@editor_required
+@login_required
 def tag_edit(tag_id):
     tag = Tag.query.get_or_404(tag_id)
     if not current_user.is_admin and tag.user_id != current_user.id:
@@ -378,7 +378,7 @@ def tag_edit(tag_id):
 
 
 @admin_bp.route('/tags/<int:tag_id>/eliminar', methods=['POST'])
-@editor_required
+@login_required
 def tag_delete(tag_id):
     tag = Tag.query.get_or_404(tag_id)
     if not current_user.is_admin and tag.user_id != current_user.id:
