@@ -13,7 +13,7 @@ from flask_login import login_required, current_user
 from sqlalchemy import func
 from werkzeug.utils import secure_filename
 from app import db
-from app.models import User, QRCode, Tag, Domain, ApiKey, ScanLog, ConditionalRedirect, AuditLog, Webhook
+from app.models import User, QRCode, Tag, Domain, ApiKey, ScanLog, ConditionalRedirect, AuditLog, Webhook, Setting
 from app.utils import generate_qr_image, generate_qr_svg, log_audit
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
@@ -134,11 +134,20 @@ def qr_list():
                          qr_types=QRCode.QR_TYPES)
 
 
+def _qr_max_per_user():
+    """Limite de QR por usuario: configurable por el admin en BD (settings),
+    con fallback al valor fijo de config.py."""
+    val = Setting.get('qr_max_per_user', None)
+    if val is not None and val.strip().isdigit():
+        return int(val.strip())
+    return current_app.config.get('QR_MAX_PER_USER', 500)
+
+
 @admin_bp.route('/qr/nuevo', methods=['GET', 'POST'])
 @login_required
 def qr_create():
-    if current_user.qr_count >= current_app.config.get('QR_MAX_PER_USER', 500) and not current_user.is_admin:
-        flash(f'Has alcanzado el limite de {current_app.config.get("QR_MAX_PER_USER")} QR.', 'warning')
+    if current_user.qr_count >= _qr_max_per_user() and not current_user.is_admin:
+        flash(f'Has alcanzado el limite de {_qr_max_per_user()} QR.', 'warning')
         return redirect(url_for('admin.qr_list'))
 
     tags = Tag.query.order_by(Tag.name).all()
@@ -1084,3 +1093,25 @@ def webhook_delete(wh_id):
     log_audit('delete_webhook', 'webhook', wh.id, f'url={wh.url}')
     flash('Webhook eliminado.', 'success')
     return redirect(url_for('admin.webhook_list'))
+
+
+# ─── Configuracion general (solo admin) ───
+
+@admin_bp.route('/configuracion', methods=['GET', 'POST'])
+@admin_required
+def configuracion():
+    if request.method == 'POST':
+        max_qr = (request.form.get('qr_max_per_user') or '').strip()
+        if max_qr.isdigit() and int(max_qr) > 0:
+            Setting.set('qr_max_per_user', str(int(max_qr)))
+            log_audit('update_setting', 'setting', 'qr_max_per_user', f'value={max_qr}')
+            flash('Limite de QR por usuario actualizado.', 'success')
+        else:
+            flash('Valor invalido: debe ser un numero entero mayor que 0.', 'danger')
+        return redirect(url_for('admin.configuracion'))
+
+    current_val = _qr_max_per_user()
+    default_val = current_app.config.get('QR_MAX_PER_USER', 500)
+    return render_template('configuracion.html',
+                           current_val=current_val,
+                           default_val=default_val)

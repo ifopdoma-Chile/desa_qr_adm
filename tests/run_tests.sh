@@ -9,6 +9,7 @@ export PYTHONPATH="$(pwd)"
 PY=$(command -v /Data/anaconda3/bin/python || command -v python3)
 echo "== Test funcional =="
 "$PY" tests/test_funcional.py
+"$PY" tests/test_config_ratelimit.py
 echo "== Test de paginas =="
 "$PY" tests/test_paginas.py
 echo "== TODO VERDE =="

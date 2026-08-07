@@ -1,0 +1,21 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>Configuracion general</h2>
+
+<div class="card" style="max-width: 560px;">
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('admin.configuracion') }}">
+            <div class="form-group">
+                <label for="qr_max_per_user"><b>Limite maximo de QR por usuario</b></label>
+                <input type="number" class="form-control" id="qr_max_per_user" name="qr_max_per_user"
+                       value="{{ current_val }}" min="1" step="1" required>
+                <small class="form-text text-muted">
+                    Cantidad maxima de QR activos (no eliminados) que puede tener cada usuario normal.
+                    El administrador no tiene limite. Valor por defecto del sistema: {{ default_val }}.
+                </small>
+            </div>
+            <button type="submit" class="btn btn-primary">Guardar</button>
+        </form>
+    </div>
+</div>
+{% endblock %}

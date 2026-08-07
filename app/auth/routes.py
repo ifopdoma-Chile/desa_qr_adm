@@ -3,9 +3,21 @@ from flask_login import login_user, logout_user, login_required, current_user
 from datetime import datetime, timezone
 import secrets
 from app import db, limiter
+from flask_limiter.util import get_remote_address
 from app.models import User
 from app.auth import auth_bp
 from authlib.integrations.flask_client import OAuth
+
+def _login_rate_key():
+    """Clave de rate limit por usuario: combina IP + username intentado.
+    Asi cada usuario cuenta sus 10 intentos aunque compartan la misma IP
+    (redes corporativas/NAT). Si no hay username en el form, cae a IP."""
+    username = (request.form.get('username') or '').strip().lower()
+    ip = get_remote_address()
+    if username:
+        return f'{ip}:user:{username}'
+    return f'{ip}:anon'
+
 
 oauth = OAuth()
 google = None
@@ -41,7 +53,7 @@ def init_oauth(app):
 @auth_bp.route('/login', methods=['GET', 'POST'])
 # Limites por metodo: ver pagina es barato (60/min), intentos de login van a 10/min.
 @limiter.limit(lambda: current_app.config.get('RATE_LIMIT_LOGIN_GET', '60/minute'), methods=['GET'])
-@limiter.limit(lambda: current_app.config.get('RATE_LIMIT_LOGIN', '10/minute'), methods=['POST'])
+@limiter.limit(lambda: current_app.config.get('RATE_LIMIT_LOGIN', '10/minute'), methods=['POST'], key_func=_login_rate_key)
 def login():
     if current_user.is_authenticated:
         return redirect(url_for('admin.dashboard'))

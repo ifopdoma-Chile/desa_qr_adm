@@ -518,6 +518,34 @@ class Webhook(db.Model):
         return f'<Webhook {self.id} {self.url}>'
 
 
+# ─── Settings (configuracion admin en BD) ───
+class Setting(db.Model):
+    __tablename__ = 'settings'
+
+    key = db.Column(db.String(100), primary_key=True)
+    value = db.Column(db.String(500))
+    updated_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+                           onupdate=lambda: datetime.now(timezone.utc))
+
+    @staticmethod
+    def get(key, default=None):
+        s = Setting.query.get(key)
+        return s.value if s and s.value is not None else default
+
+    @staticmethod
+    def set(key, value):
+        s = Setting.query.get(key)
+        if s:
+            s.value = value
+        else:
+            s = Setting(key=key, value=value)
+            db.session.add(s)
+        db.session.commit()
+
+    def __repr__(self):
+        return f'<Setting {self.key}={self.value}>'
+
+
 # ─── API Key ───
 class ApiKey(db.Model):
     __tablename__ = 'api_keys'
