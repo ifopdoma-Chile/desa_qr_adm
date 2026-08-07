@@ -43,6 +43,7 @@
                 &#9679; Tags
             </a>
 
+            {% if current_user.can_edit %}
             <div class="section-title">Configuracion</div>
             {% if current_user.is_admin %}
             <a href="{{ url_for('admin.import_export') }}" class="{% if request.endpoint == 'admin.import_export' %}active{% endif %}">
@@ -51,8 +52,6 @@
             <a href="{{ url_for('admin.api_docs') }}" class="{% if request.endpoint == 'admin.api_docs' %}active{% endif %}">
                 &#9679; API Docs
             </a>
-            {% endif %}
-            {% if current_user.is_admin %}
             <a href="{{ url_for('admin.api_key_list') }}" class="{% if request.endpoint == 'admin.api_key_list' %}active{% endif %}">
                 &#9679; API Keys
             </a>
@@ -61,6 +60,7 @@
             <a href="{{ url_for('admin.domain_list') }}" class="{% if request.endpoint == 'admin.domain_list' %}active{% endif %}">
                 &#9679; Dominios
             </a>
+            {% endif %}
             {% endif %}
             {% if current_user.is_admin %}
                 <div class="section-title">Administracion</div>
