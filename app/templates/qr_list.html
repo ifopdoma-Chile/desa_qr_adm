@@ -36,6 +36,7 @@
         <table>
             <thead>
                 <tr>
+                    <th>QR</th>
                     <th>Slug</th>
                     <th>Titulo</th>
                     <th>Tipo</th>
@@ -48,6 +49,12 @@
             <tbody>
                 {% for qr in qrs %}
                 <tr>
+                    <td>
+                        <a href="{{ url_for('admin.qr_detail', qr_id=qr.id) }}">
+                            <img src="{{ url_for('admin.qr_preview', size=56, data=qr.get_qr_data() or '', style=qr.qr_style or 'square', outer_shape=qr.qr_outer_shape or 'square', fg=qr.qr_fg_color or '#000000', bg=qr.qr_bg_color or '#ffffff', gradient=qr.qr_gradient or 'none', gradient_to=qr.qr_gradient_to or '#1954A2', sticker=qr.qr_sticker or 'none') }}"
+                                 alt="QR {{ qr.slug }}" width="56" height="56" style="border-radius:6px;border:1px solid var(--gray-200);object-fit:cover;">
+                        </a>
+                    </td>
                     <td><a href="{{ url_for('admin.qr_detail', qr_id=qr.id) }}">{{ qr.slug }}</a></td>
                     <td class="truncate" style="max-width:200px;">{{ qr.title }}</td>
                     <td><span class="badge badge-info">{{ qr.qr_type }}</span></td>
@@ -83,7 +90,7 @@
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="7">
+                    <td colspan="8">
                         <div class="empty-state">
                             <h3>No hay QR</h3>
                             <p>Crea tu primer codigo QR para empezar.</p>

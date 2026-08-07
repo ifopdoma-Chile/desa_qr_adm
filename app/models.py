@@ -117,6 +117,9 @@ class QRCode(db.Model):
     STYLE_SHIELD = 'shield'
     STYLE_CLOUD = 'cloud'
     STYLE_FISH = 'fish'
+    STYLE_PEZ = 'pez'
+    STYLE_OLA = 'ola'
+    STYLE_ESCUDO = 'escudo'
 
     QR_STYLES = [
         (STYLE_SQUARE, 'Cuadrados'),
@@ -134,6 +137,9 @@ class QRCode(db.Model):
         (STYLE_SHIELD, 'Escudo'),
         (STYLE_CLOUD, 'Nube'),
         (STYLE_FISH, 'Pez'),
+        (STYLE_PEZ, 'Pez (premium IFOP)'),
+        (STYLE_OLA, 'Ola (premium IFOP)'),
+        (STYLE_ESCUDO, 'Escudo (premium IFOP)'),
     ]
 
     OUTER_SQUARE = 'square'
@@ -182,6 +188,9 @@ class QRCode(db.Model):
     STICKER_CTA = 'cta'
     STICKER_DOTS = 'dots'
     STICKER_WAVE = 'wave'
+    STICKER_INST = 'institucional'
+    STICKER_CTA_IFOP = 'cta_ifop'
+    STICKER_MARINO = 'marino'
 
     QR_STICKERS = [
         (STICKER_NONE, 'Sin marco'),
@@ -190,6 +199,9 @@ class QRCode(db.Model):
         (STICKER_CTA, 'CTA - Escanea aqui'),
         (STICKER_DOTS, 'Puntos'),
         (STICKER_WAVE, 'Ola marina'),
+        (STICKER_INST, 'Premium - Tarjeta IFOP'),
+        (STICKER_CTA_IFOP, 'Premium - CTA IFOP'),
+        (STICKER_MARINO, 'Premium - Marino'),
     ]
 
     id = db.Column(db.Integer, primary_key=True)

@@ -1,6 +1,7 @@
 import io
 import re
 import math
+import os
 import hashlib
 import qrcode
 from qrcode.image.styledpil import StyledPilImage
@@ -21,6 +22,7 @@ from qrcode.image.styles.colormasks import (
     SquareGradiantColorMask,
 )
 from PIL import Image, ImageDraw, ImageFont
+from flask import current_app
 from user_agents import parse as ua_parse
 from app.models import ConditionalRedirect
 
@@ -158,6 +160,101 @@ class FishModuleDrawer(ModuleDrawer):
                        cx - w // 4 + er, cy - h // 4 + er], fill=255)
 
 
+# ─── Modulos custom premium (assets de Romano: pez, ola, escudo) ───
+# Reemplazan SOLO modulos de datos. Finder patterns (ojos), timing y alignment
+# quedan como cuadrados solidos para garantizar escaneabilidad (validado con zxing).
+
+
+def is_function_module(r, c, n):
+    """True si la celda (r,c) es un modulo de funcion (finder/timing/alignment).
+    Los modulos de funcion NO deben ser reemplazados por formas custom."""
+    # Finder patterns: 3 cuadrados 7x7 en las esquinas + separador 8x8
+    if (r < 8 and c < 8) or (r < 8 and c >= n - 8) or (r >= n - 8 and c < 8):
+        return True
+    # Timing patterns: fila 6 / columna 6 (salvo dentro de finder)
+    if (r == 6 and 8 <= c < n - 8) or (c == 6 and 8 <= r < n - 8):
+        return True
+    # Alignment patterns: para la version tipica (25x25 / 29x29) estan en:
+    #   TL busca de esquina con su finder (4,4 a 6,6) y otros en cruce timing.
+    # Regla generica: cruces donde fila y columna pertenecen a {n-7} dentro del interior.
+    # Aproximamos como los centros de alineacion estandar: filas/cols = [6, n-7] (v2)
+    alignment_positions = [6, n - 7] if n >= 25 else []
+    for ar in alignment_positions:
+        for ac in alignment_positions:
+            if (4 <= r - ar <= 4) and (4 <= c - ac <= 4):
+                # evitar solaparse con finder TL (el alignment (6,6) coincide con finder)
+                if not (ar == 6 and ac == 6):
+                    return True
+    return False
+
+
+class ImageModuleDrawer(ModuleDrawer):
+    """Dibuja modulos de datos con la silueta de una imagen PNG (pez, ola, escudo).
+    Los modulos de funcion se dibujan como cuadrados solidos.
+    La silueta redimensionada se cachea por tamano de celda (clave: box_size)
+    para que la generacion 4K no abra/resize el PNG por cada modulo."""
+
+    def __init__(self, module_path=None, color=(15, 58, 117)):
+        self.module_path = module_path
+        self.color = color
+        self._cache = {}
+        self._matrix_n_cache = None
+
+    def _module_for(self, box_size):
+        """Silueta recoloreada + redimensionada para un box_size (cacheada)."""
+        if box_size in self._cache:
+            return self._cache[box_size]
+        try:
+            mod = Image.open(self.module_path).convert('RGBA')
+            target = int(box_size * 1.05)
+            mod = mod.resize((target, target), Image.LANCZOS)
+            alpha = mod.split()[3]
+            col_img = Image.new('RGBA', mod.size, (*self.color, 255))
+            masked = Image.composite(col_img, Image.new('RGBA', mod.size, (0, 0, 0, 0)), alpha)
+        except Exception:
+            masked = None
+        self._cache[box_size] = masked
+        return masked
+
+    def _matrix_n(self, box_size):
+        """Tamano de matriz calculado una sola vez por imagen."""
+        if self._matrix_n_cache is None:
+            self._matrix_n_cache = _matrix_size(self.img, box_size)
+        return self._matrix_n_cache
+
+    def drawrect(self, box, is_black):
+        if not is_black:
+            return
+        (x1, y1), (x2, y2) = box
+        box_size = x2 - x1
+        # Derivar row/col desde la posicion (asumiendo border=4)
+        border = 4
+        row = int(round(y1 / box_size)) - border
+        col = int(round(x1 / box_size)) - border
+        d = ImageDraw.Draw(self.img)
+        if not self.module_path or is_function_module(row, col, self._matrix_n(box_size)):
+            d.rectangle([x1, y1, x2, y2], fill=0)
+            return
+        masked = self._module_for(box_size)
+        if masked is None:
+            d.rectangle([x1, y1, x2, y2], fill=0)
+            return
+        target = masked.width
+        ox = x1 + (box_size - target) // 2
+        oy = y1 + (box_size - target) // 2
+        self.img.paste(masked, (ox, oy), masked)
+
+
+def _matrix_size(img, box_size):
+    """Estima tamano de la matriz QR desde las dimensiones de la imagen."""
+    try:
+        w, h = img.size
+        return int(round((min(w, h) / box_size)) - 8)
+    except Exception:
+        return 25
+
+
+
 OUTER_SHAPE_PADDING = 4
 
 
@@ -286,7 +383,19 @@ MODULE_DRAWERS = {
     'shield': ShieldModuleDrawer,
     'cloud': CloudModuleDrawer,
     'fish': FishModuleDrawer,
+    'pez': lambda: ImageModuleDrawer(_module_path('qr_module_pez_1024.png')),
+    'ola': lambda: ImageModuleDrawer(_module_path('qr_module_ola_1024.png')),
+    'escudo': lambda: ImageModuleDrawer(_module_path('qr_module_escudo_1024.png')),
 }
+
+# Estilos que usan siluetas de imagen (se upscalean con LANCZOS para suavizar)
+IMAGE_STYLES = frozenset({'pez', 'ola', 'escudo'})
+
+
+def _module_path(filename):
+    """Ruta absoluta de un modulo custom (assets de Romano en static/modules)."""
+    return _asset_path('modules', filename)
+
 
 
 COLOR_MASKS = {
@@ -317,23 +426,30 @@ def generate_qr_image(data, size=400, logo_path=None,
                       style='square', outer_shape='square',
                       gradient='none', gradient_to='#1954A2',
                       transparent_bg=False, sticker='none'):
+    # Generar a resolucion eficiente y upscalar al final: un QR es binario,
+    # el upscale no pierde escaneabilidad y evita 17M px nativos (39s+ en 4K).
+    gen_size = min(size, 2048)
     qr = qrcode.QRCode(
         version=None,
         error_correction=qrcode.constants.ERROR_CORRECT_H if logo_path else qrcode.constants.ERROR_CORRECT_M,
-        box_size=max(1, size // 40),
+        box_size=max(1, gen_size // 40),
         border=4,
     )
     qr.add_data(data)
     qr.make(fit=True)
 
-    drawer_cls = MODULE_DRAWERS.get(style, SquareModuleDrawer)
+    drawer_entry = MODULE_DRAWERS.get(style, SquareModuleDrawer)
+    try:
+        drawer = drawer_entry()
+    except TypeError:
+        drawer = drawer_entry  # ya es instancia (lambda que devuelve instance)
     fg = _hex_to_rgb(fill_color)
     bg = _hex_to_rgb(back_color)
     gradient_to_rgb = _hex_to_rgb(gradient_to) if gradient_to else bg
 
     img = qr.make_image(
         image_factory=StyledPilImage,
-        module_drawer=drawer_cls(),
+        module_drawer=drawer,
         color_mask=_build_color_mask(gradient, fg, bg, gradient_to_rgb),
     )
 
@@ -357,7 +473,7 @@ def generate_qr_image(data, size=400, logo_path=None,
                 logo = logo.convert('RGBA')
             else:
                 logo = logo.convert('RGB')
-            logo_max = int(size * 0.25)
+            logo_max = int(gen_size * 0.25)
             logo.thumbnail((logo_max, logo_max), Image.LANCZOS)
             pos = ((img.width - logo.width) // 2, (img.height - logo.height) // 2)
             if img.mode == 'RGBA':
@@ -367,10 +483,16 @@ def generate_qr_image(data, size=400, logo_path=None,
         except Exception:
             pass
 
-    img = apply_outer_shape(img, outer_shape, size)
+    img = apply_outer_shape(img, outer_shape, gen_size)
 
     if sticker and sticker != 'none':
-        img = apply_sticker(img, sticker, size, fill_color, back_color, logo_path)
+        img = apply_sticker(img, sticker, gen_size, fill_color, back_color, logo_path)
+
+    # Upscale final al tamano pedido (NEAREST mantiene bordes nitidos para
+    # modulos cuadrados; LANCZOS suaviza siluetas de modulos imagen/marcos).
+    if size > gen_size and img.width != size:
+        resample = Image.LANCZOS if (style in IMAGE_STYLES or sticker != 'none') else Image.NEAREST
+        img = img.resize((size, size), resample)
 
     output = io.BytesIO()
     img.save(output, format='PNG', quality=95)
@@ -488,7 +610,47 @@ def apply_sticker(img, sticker, size, fg_hex='#000000', bg_hex='#ffffff', logo_p
             d.polygon(pts, fill=col)
         return canvas
 
+    # ─── Marcos premium IFOP (assets de Romano) ───
+    _FRAME_MAP = {
+        'institucional': ('qr_frame_ifop_institucional_1024.png', 768, (512, 512)),
+        'cta_ifop': ('qr_frame_ifop_cta_1024.png', 640, (512, 504)),
+        'marino': ('qr_frame_ifop_marino_1024.png', 640, (512, 512)),
+    }
+    if sticker in _FRAME_MAP:
+        frame_file, qr_size, center = _FRAME_MAP[sticker]
+        frame_path = _asset_path('frames', frame_file)
+        if frame_path and os.path.exists(frame_path):
+            try:
+                frame = Image.open(frame_path).convert('RGBA')
+                # Forzar fondo blanco sobre el QR (no transparente) para contraste en el hueco
+                qr_solid = Image.new('RGB', base.size, (255, 255, 255))
+                qr_solid.paste(base, (0, 0), base if base.mode == 'RGBA' else None)
+                qr_resized = qr_solid.resize((qr_size, qr_size), Image.LANCZOS)
+                pos = (center[0] - qr_size // 2, center[1] - qr_size // 2)
+                # El hueco del marco es transparente: el QR (fondo blanco) cubre el area
+                frame.paste(qr_resized, pos)
+                return frame
+            except Exception as e:
+                print('apply_sticker frame error:', e)
+
     return base
+
+
+def _asset_path(subdir, filename):
+    """Ruta de un asset (frames/modules). Funciona dentro y fuera de app context."""
+    # El paquete app/ contiene static/<subdir>/ — la base es la carpeta app/
+    here = os.path.dirname(os.path.abspath(__file__))  # .../app
+    p = os.path.join(here, 'static', subdir, filename)
+    if os.path.exists(p):
+        return p
+    try:
+        from flask import current_app
+        p = os.path.join(current_app.root_path, 'static', subdir, filename)
+        if os.path.exists(p):
+            return p
+    except Exception:
+        pass
+    return None
 
 
 def generate_qr_svg(data, fill_color='#000000', back_color='#ffffff'):

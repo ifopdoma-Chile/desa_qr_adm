@@ -60,13 +60,15 @@
         <div class="card">
             <div class="card-header">Codigo QR</div>
             <div class="card-body qr-preview">
-                <img src="{{ url_for('qr.download_qr', slug=qr.slug) }}?size=300&amp;outer_shape={{ qr.qr_outer_shape }}&amp;style={{ qr.qr_style }}&amp;fg={{ qr.qr_fg_color | urlencode }}&amp;bg={{ qr.qr_bg_color | urlencode }}" alt="QR {{ qr.slug }}" style="max-width:100%;">
-                <div class="flex gap-1 mt-2" style="justify-content:center;">
-                    <a href="{{ url_for('qr.download_qr', slug=qr.slug) }}?format=png&amp;outer_shape={{ qr.qr_outer_shape }}&amp;style={{ qr.qr_style }}&amp;fg={{ qr.qr_fg_color | urlencode }}&amp;bg={{ qr.qr_bg_color | urlencode }}" class="btn btn-sm btn-primary" download>PNG</a>
-                    <a href="{{ url_for('qr.download_qr', slug=qr.slug) }}?format=svg&amp;outer_shape={{ qr.qr_outer_shape }}&amp;style={{ qr.qr_style }}&amp;fg={{ qr.qr_fg_color | urlencode }}&amp;bg={{ qr.qr_bg_color | urlencode }}" class="btn btn-sm btn-outline" download>SVG</a>
+                <img src="{{ url_for('qr.download_qr', slug=qr.slug, size=360, outer_shape=qr.qr_outer_shape, style=qr.qr_style, fg=qr.qr_fg_color, bg=qr.qr_bg_color, gradient=qr.qr_gradient or 'none', gradient_to=qr.qr_gradient_to or '#1954A2', sticker=qr.qr_sticker or 'none', transparent='1' if qr.qr_transparent_bg else '0') }}" alt="QR {{ qr.slug }}" style="max-width:100%;">
+                <div class="flex gap-1 mt-2" style="justify-content:center;flex-wrap:wrap;">
+                    <a href="{{ url_for('qr.download_qr', slug=qr.slug, size=1024) }}" class="btn btn-sm btn-primary" download>PNG 1K</a>
+                    <a href="{{ url_for('qr.download_qr', slug=qr.slug, size=2048) }}" class="btn btn-sm btn-outline" download>PNG 2K</a>
+                    <a href="{{ url_for('qr.download_qr', slug=qr.slug, size=4096) }}" class="btn btn-sm btn-outline" download>PNG 4K</a>
+                    <a href="{{ url_for('qr.download_qr', slug=qr.slug, format='svg') }}" class="btn btn-sm btn-outline" download>SVG</a>
                 </div>
                 <div style="font-size:0.75rem;color:var(--gray-500);margin-top:0.5rem;">
-                    Forma: {{ qr.qr_outer_shape }} | Estilo: {{ qr.qr_style }} | Frente: {{ qr.qr_fg_color }} | Fondo: {{ qr.qr_bg_color }}
+                    Forma: {{ qr.qr_outer_shape or 'square' }} | Modulos: {{ qr.qr_style or 'square' }} | Frente: {{ qr.qr_fg_color }} | Fondo: {{ qr.qr_bg_color }} | Gradiente: {{ qr.qr_gradient or 'none' }}{% if qr.qr_gradient != 'none' %} ({{ qr.qr_gradient_to }}){% endif %} | Sticker: {{ qr.qr_sticker or 'none' }}
                 </div>
             </div>
         </div>
