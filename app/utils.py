@@ -500,7 +500,89 @@ def generate_qr_image(data, size=400, logo_path=None,
     return output
 
 
-# ─── Stickers / Marcos ───
+# ─── Envio por correo electronico ───
+
+def send_qr_email(recipient, qr, app_base_url, subject=None):
+    """Envia el QR por correo electronico usando SMTP configurado en la app.
+    Retorna (bool, mensaje).
+    """
+    import smtplib
+    from email.mime.image import MIMEImage
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+    from email.utils import formataddr
+    from flask import current_app as app
+    import io
+
+    try:
+        settings = app.config
+        smtp_host = settings.get('MAIL_SERVER', 'smtp.gmail.com')
+        smtp_port = settings.get('MAIL_PORT', 587)
+        smtp_user = settings.get('MAIL_USERNAME', 'ifopdoma@gmail.com')
+        smtp_pass = settings.get('MAIL_PASSWORD', '')
+        sender = settings.get('MAIL_DEFAULT_SENDER', 'IFOP QR Manager <ifopdoma@gmail.com>')
+
+        if not smtp_pass:
+            return False, 'SMTP no configurado (falta MAIL_PASSWORD).'
+
+        # Generar QR PNG
+        logo_path = None
+        if qr.logo_filename:
+            lp = os.path.join(app.root_path, 'static', 'uploads', qr.logo_filename)
+            if os.path.exists(lp):
+                logo_path = lp
+
+        qr_img = generate_qr_image(
+            qr.get_qr_data(), size=1024, logo_path=logo_path,
+            fill_color=qr.qr_fg_color or '#000000',
+            back_color=qr.qr_bg_color or '#ffffff',
+            style=qr.qr_style or 'square',
+            outer_shape=qr.qr_outer_shape or 'square',
+            gradient=qr.qr_gradient or 'none',
+            gradient_to=qr.qr_gradient_to or '#1954A2',
+            sticker=qr.qr_sticker or 'none',
+            transparent_bg=bool(qr.qr_transparent_bg),
+        )
+
+        msg = MIMEMultipart('related')
+        msg['From'] = sender
+        msg['To'] = recipient
+        msg['Subject'] = subject or f'Codigo QR: {qr.title}'
+
+        base_url = app_base_url.rstrip('/')
+        qr_edit_url = f'{base_url}/admin/qr/{qr.id}'
+
+        html = f'''
+        <html><body style="font-family:Arial,sans-serif;color:#333;">
+        <h2 style="color:#1954A2;">Codigo QR: {qr.title}</h2>
+        <p><img src="cid:qr_image" alt="QR" style="max-width:500px;border:1px solid #ccc;border-radius:8px;"></p>
+        <p><strong>Slug:</strong> <a href="{qr.full_url}">{qr.slug}</a></p>
+        <p><strong>URL:</strong> <a href="{qr.full_url}">{qr.full_url}</a></p>
+        <hr>
+        <p style="font-size:0.85rem;color:#777;">Generado por IFOP QR Manager | <a href="{qr_edit_url}">Administrar</a></p>
+        </body></html>'''
+
+        msg_alt = MIMEMultipart('alternative')
+        msg_alt.attach(MIMEText(f'Codigo QR: {qr.title}\nSlug: {qr.slug}\nURL: {qr.full_url}', 'plain', 'utf-8'))
+        msg_alt.attach(MIMEText(html, 'html', 'utf-8'))
+        msg.attach(msg_alt)
+
+        qr_png = MIMEImage(qr_img.getvalue())
+        qr_png.add_header('Content-ID', '<qr_image>')
+        qr_png.add_header('Content-Disposition', 'inline', filename=f'{qr.slug}.png')
+        msg.attach(qr_png)
+
+        with smtplib.SMTP(smtp_host, smtp_port) as server:
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
+            server.login(smtp_user, smtp_pass)
+            server.sendmail(settings.get('MAIL_USERNAME', smtp_user), [recipient], msg.as_string())
+
+        return True, 'Correo enviado exitosamente.'
+    except Exception as e:
+        return False, f'Error al enviar: {str(e)}'
+
 
 def _load_font(size_px):
     candidates = [

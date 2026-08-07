@@ -176,6 +176,27 @@ def qr_detail(qr_id):
                          scans_by_device=scans_by_device, scans_by_day=scans_by_day)
 
 
+@admin_bp.route('/qr/<int:qr_id>/enviar-email', methods=['POST'])
+@editor_required
+def qr_send_email(qr_id):
+    """Envia el QR por correo electronico al dueno del QR (o al usuario actual)."""
+    qr = QRCode.query.get_or_404(qr_id)
+    _check_owner(qr)
+
+    # Destinatario: por defecto el email del owner del QR, o input del form
+    recipient = request.form.get('email', '').strip() or current_user.email
+    subject = request.form.get('subject', '').strip() or f'Codigo QR: {qr.title}'
+
+    from app.utils import send_qr_email
+    success, msg = send_qr_email(recipient, qr, current_app.config['APP_BASE_URL'],
+                                  subject=subject)
+    if success:
+        flash(msg, 'success')
+    else:
+        flash(msg, 'danger')
+    return redirect(url_for('admin.qr_detail', qr_id=qr.id))
+
+
 @admin_bp.route('/qr/<int:qr_id>/editar', methods=['GET', 'POST'])
 @editor_required
 def qr_edit(qr_id):
@@ -398,6 +419,30 @@ def user_edit(user_id):
         flash('Usuario actualizado.', 'success')
         return redirect(url_for('admin.user_list'))
     return render_template('user_form.html', user=user)
+
+
+@admin_bp.route('/usuarios/<int:user_id>/aprobar', methods=['POST'])
+@admin_required
+def user_approve(user_id):
+    """Aprueba un usuario nuevo (por ejemplo, registrado via Google)."""
+    user = User.query.get_or_404(user_id)
+    user.is_approved = True
+    user.is_active_user = True
+    db.session.commit()
+    flash(f'Usuario {user.username} aprobado. Ya puede ingresar.', 'success')
+    return redirect(url_for('admin.user_list'))
+
+
+@admin_bp.route('/usuarios/<int:user_id>/rechazar', methods=['POST'])
+@admin_required
+def user_reject(user_id):
+    """Rechaza/desactiva un usuario pendiente."""
+    user = User.query.get_or_404(user_id)
+    user.is_approved = False
+    user.is_active_user = False
+    db.session.commit()
+    flash(f'Usuario {user.username} rechazado.', 'warning')
+    return redirect(url_for('admin.user_list'))
 
 
 # ─── API Keys ───

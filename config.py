@@ -40,6 +40,21 @@ class Config:
     # Pagination
     PER_PAGE = 25
 
+    # Mail (SMTP)
+    MAIL_SERVER = os.environ.get('MAIL_SERVER', 'smtp.gmail.com')
+    MAIL_PORT = int(os.environ.get('MAIL_PORT', 587))
+    MAIL_USE_TLS = True
+    MAIL_USERNAME = os.environ.get('MAIL_USERNAME', 'ifopdoma@gmail.com')
+    MAIL_PASSWORD = os.environ.get('MAIL_PASSWORD', '')
+    MAIL_DEFAULT_SENDER = os.environ.get('MAIL_DEFAULT_SENDER', 'IFOP QR Manager <ifopdoma@gmail.com>')
+
+    # Google OAuth (mismo esquema que modelacion_v2)
+    GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '')
+    GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', '')
+
+    # Approval (usuarios nuevos requieren aprobacion del admin)
+    NEW_USERS_NEED_APPROVAL = os.environ.get('NEW_USERS_NEED_APPROVAL', 'true').lower() == 'true'
+
 
 class DevelopmentConfig(Config):
     DEBUG = True

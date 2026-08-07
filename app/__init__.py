@@ -62,11 +62,14 @@ def create_app(config_name='default'):
         )
 
     # Register blueprints
-    from app.auth import auth_bp
+    from app.auth import auth_bp, init_oauth
     from app.admin import admin_bp
     from app.qr import qr_bp
     from app.api import api_bp
     from app.redirect import redirect_bp
+
+    # Google OAuth (si hay credenciales en env)
+    init_oauth(app)
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp)

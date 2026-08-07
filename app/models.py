@@ -34,6 +34,8 @@ class User(UserMixin, db.Model):
     is_active_user = db.Column(db.Boolean, default=True, nullable=False)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     last_login = db.Column(db.DateTime)
+    google_id = db.Column(db.String(100), unique=True, nullable=True, index=True)
+    is_approved = db.Column(db.Boolean, default=False, nullable=False)
 
     qr_codes = db.relationship('QRCode', backref='owner', lazy='dynamic',
                                cascade='all, delete-orphan')

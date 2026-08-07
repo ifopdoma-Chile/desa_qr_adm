@@ -67,6 +67,10 @@
                     <a href="{{ url_for('qr.download_qr', slug=qr.slug, size=4096) }}" class="btn btn-sm btn-outline" download>PNG 4K</a>
                     <a href="{{ url_for('qr.download_qr', slug=qr.slug, format='svg') }}" class="btn btn-sm btn-outline" download>SVG</a>
                 </div>
+                <form method="POST" action="{{ url_for('admin.qr_send_email', qr_id=qr.id) }}" class="flex gap-1 mt-2" style="justify-content:center;align-items:center;flex-wrap:wrap;">
+                    <input type="email" name="email" value="{{ current_user.email }}" required placeholder="Correo destinatario" style="padding:0.4rem 0.6rem;border:1px solid var(--gray-300);border-radius:6px;font-size:0.85rem;min-width:220px;">
+                    <button type="submit" class="btn btn-sm btn-primary">📧 Enviar por correo</button>
+                </form>
                 <div style="font-size:0.75rem;color:var(--gray-500);margin-top:0.5rem;">
                     Forma: {{ qr.qr_outer_shape or 'square' }} | Modulos: {{ qr.qr_style or 'square' }} | Frente: {{ qr.qr_fg_color }} | Fondo: {{ qr.qr_bg_color }} | Gradiente: {{ qr.qr_gradient or 'none' }}{% if qr.qr_gradient != 'none' %} ({{ qr.qr_gradient_to }}){% endif %} | Sticker: {{ qr.qr_sticker or 'none' }}
                 </div>
