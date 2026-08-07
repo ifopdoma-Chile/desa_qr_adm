@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Usuarios - {{ app_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Usuarios</h1>
+    <div class="actions">
+        <a href="{{ url_for('admin.user_create') }}" class="btn btn-primary">+ Nuevo Usuario</a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="table-container">
+        <table>
+            <thead><tr><th>Usuario</th><th>Nombre</th><th>Email</th><th>Rol</th><th>QR</th><th>Activo</th><th>Aprobado</th><th>Ultimo acceso</th><th>Acciones</th></tr></thead>
+            <tbody>
+                {% for u in users %}
+                <tr>
+                    <td><strong>{{ u.username }}</strong></td>
+                    <td>{{ u.full_name or '-' }}</td>
+                    <td>{{ u.email }}{% if u.google_id %} <span class="badge badge-secondary" title="Cuenta Google">G</span>{% endif %}</td>
+                    <td><span class="badge {% if u.is_admin %}badge-danger{% elif u.can_edit %}badge-success{% else %}badge-secondary{% endif %}">
+                        {{ dict(u.ROLES).get(u.role, u.role) }}
+                    </span></td>
+                    <td>{{ u.qr_count }}</td>
+                    <td>{% if u.is_active_user %}<span class="badge badge-success">Si</span>{% else %}<span class="badge badge-danger">No</span>{% endif %}</td>
+                    <td>
+                        {% if u.is_approved %}
+                            <span class="badge badge-success">Aprobado</span>
+                        {% else %}
+                            <span class="badge badge-warning">Pendiente</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ u.last_login.strftime('%d/%m/%Y %H:%M') if u.last_login else '-' }}</td>
+                    <td class="actions">
+                        {% if not u.is_approved %}
+                        <form method="POST" action="{{ url_for('admin.user_approve', user_id=u.id) }}" style="display:inline;">
+                            <button type="submit" class="btn btn-sm btn-success">Aprobar</button>
+                        </form>
+                        <form method="POST" action="{{ url_for('admin.user_reject', user_id=u.id) }}" style="display:inline;">
+                            <button type="submit" class="btn btn-sm btn-danger">Rechazar</button>
+                        </form>
+                        {% endif %}
+                        <a href="{{ url_for('admin.user_edit', user_id=u.id) }}" class="btn btn-sm btn-outline">Editar</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

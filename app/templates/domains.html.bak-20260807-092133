@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Dominios - {{ app_name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Dominios</h1>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('admin.domain_create') }}" class="flex gap-1 flex-wrap items-center">
+            <input class="form-control" name="domain" placeholder="ej: qr.ifop.cl" required style="max-width:300px;">
+            <button type="submit" class="btn btn-primary">Agregar Dominio</button>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="table-container">
+        <table>
+            <thead><tr><th>Dominio</th><th>Default</th><th>Activo</th><th>QRs</th><th>Acciones</th></tr></thead>
+            <tbody>
+                {% for d in domains %}
+                <tr>
+                    <td><strong>{{ d.domain }}</strong></td>
+                    <td>{% if d.is_default %}<span class="badge badge-success">Si</span>{% else %}-{% endif %}</td>
+                    <td>{% if d.is_active %}<span class="badge badge-success">Si</span>{% else %}<span class="badge badge-danger">No</span>{% endif %}</td>
+                    <td>{{ d.qr_codes|length }}</td>
+                    <td class="actions">
+                        <form method="POST" action="{{ url_for('admin.domain_toggle', domain_id=d.id) }}" style="display:inline;">
+                            <button type="submit" class="btn btn-sm btn-outline">{{ 'Desactivar' if d.is_active else 'Activar' }}</button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5"><div class="empty-state"><h3>Sin dominios</h3><p>Agrega dominios para servir QR desde multiples URLs.</p></div></td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

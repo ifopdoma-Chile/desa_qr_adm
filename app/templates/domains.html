@@ -11,24 +11,32 @@
             <input class="form-control" name="domain" placeholder="ej: qr.ifop.cl" required style="max-width:300px;">
             <button type="submit" class="btn btn-primary">Agregar Dominio</button>
         </form>
+        <p class="muted" style="margin-top:0.5rem;font-size:0.85rem;">
+            Solo el nombre del dominio (sin https://). Para que los QR se sirvan desde el dominio, su DNS debe apuntar a este servidor.
+        </p>
     </div>
 </div>
 
 <div class="card">
     <div class="table-container">
         <table>
-            <thead><tr><th>Dominio</th><th>Default</th><th>Activo</th><th>QRs</th><th>Acciones</th></tr></thead>
+            <thead><tr><th>Dominio</th><th>Creado por</th><th>Default</th><th>Activo</th><th>QRs</th><th>Acciones</th></tr></thead>
             <tbody>
                 {% for d in domains %}
                 <tr>
                     <td><strong>{{ d.domain }}</strong></td>
+                    <td>{{ d.creator_name }}{% if d.user_id == current_user.id %} <span class="badge badge-secondary">tu</span>{% endif %}</td>
                     <td>{% if d.is_default %}<span class="badge badge-success">Si</span>{% else %}-{% endif %}</td>
                     <td>{% if d.is_active %}<span class="badge badge-success">Si</span>{% else %}<span class="badge badge-danger">No</span>{% endif %}</td>
                     <td>{{ d.qr_codes|length }}</td>
                     <td class="actions">
+                        {% if can_toggle %}
                         <form method="POST" action="{{ url_for('admin.domain_toggle', domain_id=d.id) }}" style="display:inline;">
                             <button type="submit" class="btn btn-sm btn-outline">{{ 'Desactivar' if d.is_active else 'Activar' }}</button>
                         </form>
+                        {% else %}
+                        <span class="muted">—</span>
+                        {% endif %}
                     </td>
                 </tr>
                 {% else %}

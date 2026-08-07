@@ -70,9 +70,19 @@ class Domain(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     domain = db.Column(db.String(253), unique=True, nullable=False)
+    # Creador del dominio (NULL = creado por admin antes de este campo)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     is_default = db.Column(db.Boolean, default=False, nullable=False)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+
+    creator = db.relationship('User', backref='domains')
+
+    @property
+    def creator_name(self):
+        if self.creator:
+            return self.creator.full_name or self.creator.username
+        return 'Admin'
 
     def __repr__(self):
         return f'<Domain {self.domain}>'

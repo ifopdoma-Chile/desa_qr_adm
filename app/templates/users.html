@@ -41,6 +41,17 @@
                         </form>
                         {% endif %}
                         <a href="{{ url_for('admin.user_edit', user_id=u.id) }}" class="btn btn-sm btn-outline">Editar</a>
+                        {% if u.id != current_user.id %}
+                        <form method="POST" action="{{ url_for('admin.user_delete', user_id=u.id) }}" style="display:inline;"
+                              onsubmit="return confirm('Eliminar al usuario {{ u.username }}? Sus {{ u.qr_count }} QR se transferiran a tu cuenta.');">
+                            <button type="submit" class="btn btn-sm btn-danger">Eliminar</button>
+                        </form>
+                        <form method="POST" action="{{ url_for('admin.user_delete', user_id=u.id) }}" style="display:inline;"
+                              onsubmit="return confirm('ADVERTENCIA: eliminar a {{ u.username }} y TODOS sus {{ u.qr_count }} QR permanentemente (incluye escaneos y redirecciones)? Esta accion NO se puede deshacer.');">
+                            <input type="hidden" name="delete_qrs" value="1">
+                            <button type="submit" class="btn btn-sm btn-danger" title="Elimina usuario y todos sus QR permanentemente">Eliminar todo</button>
+                        </form>
+                        {% endif %}
                     </td>
                 </tr>
                 {% endfor %}

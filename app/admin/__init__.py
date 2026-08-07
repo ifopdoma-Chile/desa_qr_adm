@@ -445,6 +445,44 @@ def user_reject(user_id):
     return redirect(url_for('admin.user_list'))
 
 
+@admin_bp.route('/usuarios/<int:user_id>/eliminar', methods=['POST'])
+@admin_required
+def user_delete(user_id):
+    """Elimina un usuario.
+
+    - Por defecto: sus QR se transfieren al admin que ejecuta la accion.
+    - Con delete_qrs=1: sus QR (y todo lo asociado: escaneos, redirecciones, tags) se borran permanentemente.
+    """
+    user = User.query.get_or_404(user_id)
+    if user.id == current_user.id:
+        flash('No puedes eliminar tu propia cuenta.', 'danger')
+        return redirect(url_for('admin.user_list'))
+
+    delete_qrs = request.form.get('delete_qrs') == '1'
+    n_qrs = user.qr_codes.count()
+    n_keys = user.api_keys.count()
+
+    # Tags del usuario (FK a users.id sin cascade) -> se eliminan explicitamente
+    for tag in list(user.tags):
+        db.session.delete(tag)
+
+    # Dominios creados por el usuario -> pasan al admin que elimina (recursos globales)
+    Domain.query.filter_by(user_id=user.id).update({'user_id': current_user.id})
+
+    if delete_qrs:
+        # cascade 'all, delete-orphan' borra sus QR; escaneos/redirecciones cierran via ondelete=CASCADE
+        db.session.delete(user)
+        db.session.commit()
+        flash(f'Usuario {user.username} eliminado permanentemente junto con sus {n_qrs} QR y {n_keys} API keys.', 'info')
+    else:
+        # Transferir sus QR al admin que ejecuta la accion (conserva el historial de escaneos)
+        user.qr_codes.update({'user_id': current_user.id})
+        db.session.delete(user)  # api_keys via cascade
+        db.session.commit()
+        flash(f'Usuario {user.username} eliminado. Sus {n_qrs} QR fueron transferidos a tu cuenta.', 'success')
+    return redirect(url_for('admin.user_list'))
+
+
 # ─── API Keys ───
 
 @admin_bp.route('/api-keys')
@@ -498,26 +536,34 @@ def api_key_delete(key_id):
     return redirect(url_for('admin.api_key_list'))
 
 
-# ─── Dominios ───
+# ─── Dominios (multi-dominio; editores pueden crear) ───
 
 @admin_bp.route('/dominios')
-@admin_required
+@editor_required
 def domain_list():
     domains = Domain.query.order_by(Domain.domain).all()
-    return render_template('domains.html', domains=domains)
+    return render_template('domains.html', domains=domains,
+                           can_toggle=current_user.is_admin)
 
 
 @admin_bp.route('/dominios/nuevo', methods=['POST'])
-@admin_required
+@editor_required
 def domain_create():
     domain_name = request.form.get('domain', '').strip().lower()
+    domain_name = domain_name.replace('https://', '').replace('http://', '').rstrip('/')
     if not domain_name:
         flash('El dominio es obligatorio.', 'danger')
         return redirect(url_for('admin.domain_list'))
-    domain = Domain(domain=domain_name)
+    if ' ' in domain_name or '/' in domain_name:
+        flash('Dominio invalido: usa solo el nombre (ej: qr.ifop.cl).', 'danger')
+        return redirect(url_for('admin.domain_list'))
+    if Domain.query.filter_by(domain=domain_name).first():
+        flash('Ese dominio ya existe.', 'warning')
+        return redirect(url_for('admin.domain_list'))
+    domain = Domain(domain=domain_name, user_id=current_user.id)
     db.session.add(domain)
     db.session.commit()
-    flash('Dominio agregado.', 'success')
+    flash(f'Dominio {domain_name} agregado.', 'success')
     return redirect(url_for('admin.domain_list'))
 
 
