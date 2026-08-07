@@ -528,14 +528,14 @@ def user_delete(user_id):
 # ─── API Keys ───
 
 @admin_bp.route('/api-keys')
-@login_required
+@admin_required
 def api_key_list():
     keys = ApiKey.query.filter_by(user_id=current_user.id).all()
     return render_template('api_keys.html', keys=keys)
 
 
 @admin_bp.route('/api-keys/nueva', methods=['POST'])
-@login_required
+@admin_required
 def api_key_create():
     name = request.form.get('name', '').strip()
     if not name:
@@ -559,7 +559,7 @@ def api_key_create():
 
 
 @admin_bp.route('/api-keys/clear-session', methods=['POST'])
-@login_required
+@admin_required
 def api_key_clear_session():
     session.pop('new_api_key', None)
     session.pop('new_api_key_name', None)
@@ -567,7 +567,7 @@ def api_key_clear_session():
 
 
 @admin_bp.route('/api-keys/<int:key_id>/eliminar', methods=['POST'])
-@login_required
+@admin_required
 def api_key_delete(key_id):
     key = ApiKey.query.get_or_404(key_id)
     if key.user_id != current_user.id and not current_user.is_admin:

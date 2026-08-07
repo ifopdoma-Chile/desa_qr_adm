@@ -52,9 +52,11 @@
                 &#9679; API Docs
             </a>
             {% endif %}
+            {% if current_user.is_admin %}
             <a href="{{ url_for('admin.api_key_list') }}" class="{% if request.endpoint == 'admin.api_key_list' %}active{% endif %}">
                 &#9679; API Keys
             </a>
+            {% endif %}
             {% if current_user.can_edit %}
             <a href="{{ url_for('admin.domain_list') }}" class="{% if request.endpoint == 'admin.domain_list' %}active{% endif %}">
                 &#9679; Dominios
