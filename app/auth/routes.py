@@ -22,8 +22,8 @@ def _login_rate_key():
 oauth = OAuth()
 google = None
 
-# Email que siempre es admin (mismo criterio que modelacion_v2)
-ADMIN_EMAIL = 'andres.garcia.fuentes@gmail.com'
+# Emails que siempre son admin (mismo criterio que boya_ifop)
+ADMIN_EMAILS = ['andres.garcia@ifop.cl', 'andres.garcia.fuentes@gmail.com']
 
 
 def init_oauth(app):
@@ -55,24 +55,13 @@ def init_oauth(app):
 @limiter.limit(lambda: current_app.config.get('RATE_LIMIT_LOGIN_GET', '60/minute'), methods=['GET'])
 @limiter.limit(lambda: current_app.config.get('RATE_LIMIT_LOGIN', '10/minute'), methods=['POST'], key_func=_login_rate_key)
 def login():
+    """Login SOLO via Google OAuth (decision Andres 25-08-2026, alineado con boya_ifop)."""
     if current_user.is_authenticated:
         return redirect(url_for('admin.dashboard'))
     if request.method == 'POST':
-        username = request.form.get('username', '').strip()
-        password = request.form.get('password', '')
-        remember = request.form.get('remember')
-        user = User.query.filter_by(username=username).first()
-        if user and user.check_password(password) and user.is_active_user:
-            if not user.is_approved:
-                flash('Tu cuenta esta pendiente de aprobacion del administrador.', 'warning')
-                return render_template('login.html')
-            login_user(user, remember=bool(remember))
-            user.last_login = datetime.now(timezone.utc)
-            db.session.commit()
-            nxt = request.args.get('next')
-            return redirect(nxt or url_for('admin.dashboard'))
-        flash('Usuario o contrasena incorrectos.', 'danger')
-    return render_template('login.html')
+        # Autenticacion con usuario/contraseña deshabilitada: solo Google.
+        return redirect(url_for('auth.google_login'))
+    return render_template('login.html', google_enabled=google is not None)
 
 
 @auth_bp.route('/login/google')
@@ -113,7 +102,7 @@ def google_callback():
 
         if not user:
             # Nuevo usuario via Google
-            is_admin = (email == ADMIN_EMAIL)
+            is_admin = (email in ADMIN_EMAILS)
             user = User(
                 username=email,
                 email=email,
@@ -134,7 +123,7 @@ def google_callback():
             # Usuario existente: vincular google_id si no lo tiene
             if not user.google_id:
                 user.google_id = google_id
-            if email == ADMIN_EMAIL and not user.is_admin:
+            if email in ADMIN_EMAILS and not user.is_admin:
                 user.role = User.ROLE_ADMIN
             if not user.is_approved:
                 db.session.commit()
